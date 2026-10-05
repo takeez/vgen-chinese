@@ -918,7 +918,7 @@ function importIgnoreFromText(text) {
  * 默认**不自动检查**（要你手动点，或在菜单里打开自动）。自动检查的间隔是 12 小时，
  * 而且它只写存储、不重翻当前页 —— 下次打开页面才生效，不会突然改你眼前的页面。
  */
-var REPO_SLUG = 'takeez3/vgen-chinese';
+var REPO_SLUG = 'takeez/vgen-chinese';
 var REPO_BRANCH = 'main';
 var DICT_URL_RAW = 'https://raw.githubusercontent.com/' + REPO_SLUG + '/' + REPO_BRANCH + '/dist/vgen-dict.json';
 var DICT_URL_CDN = 'https://cdn.jsdelivr.net/gh/' + REPO_SLUG + '@' + REPO_BRANCH + '/dist/vgen-dict.json';

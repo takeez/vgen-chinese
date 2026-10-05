@@ -277,11 +277,11 @@ var DICT_ROUND4 = {
   'All of 2026': '2026 全年',
   '(15 reviews)': '（15 条评价）',
   'Used for 2 services': '已用于 2 个服务',
-  'Thanks for leaving a review for redsflame': '感谢你为 redsflame 留下评价',
-  'Payment from redsflame - COMM#74C2FZEUS36V-M1': '来自 redsflame 的付款 - COMM#74C2FZEUS36V-M1',
   'submitted a Request for Pixel Art Commission (Icons / Chibis / Illustrations)': '提交了对「像素画委托（图标／Q 版／插画）」的请求',
   'has confirmed their commission and it\'s now in your queue!': '已确认其委托，现在已在你的队列中！',
-  'Be as thorough as you can so that takeez3 can give you an accurate proposal!': '请尽可能写得详细，这样 takeez3 才能给你准确的提案！',
+  /* 注：「Be as thorough as you can so that XXX can give you...」「Thanks for leaving a
+     review for XXX」「Payment from XXX - ...」这几条原本硬编码了具体用户名，
+     已改成 regex.js 里的模板规则，这样别人用也能匹配。 */
   'Please send me your character reference sheets and briefly describe your ideas (e.g., canvas size, static or animated, background requirements).': '请把你的角色设定图发给我，并简要描述你的想法（例如画布尺寸、静态或动态、背景要求）。',
 
   /* ---------------------------------------------------------- 标签补充 */

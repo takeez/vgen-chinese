@@ -44,7 +44,7 @@ VGen 上**大量文字是用户自己写的内容** —— 画师名、服务标
    「允许用户脚本」开关，只能靠开发者模式。
 3. 点这个链接安装：
 
-   **https://raw.githubusercontent.com/takeez3/vgen-chinese/main/dist/vgen-chinese.user.js**
+   **https://raw.githubusercontent.com/takeez/vgen-chinese/main/dist/vgen-chinese.user.js**
 
    若打开只显示一堆源码（说明第 2 步没生效），把整份内容复制，
    到篡改猴面板点「**+**（添加新脚本）」，全选替换后 `Ctrl+S`。

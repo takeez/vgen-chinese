@@ -81,6 +81,12 @@ var REGEX_RULES = [
     return '添加 ' + n + ' ' + (map[what.toLowerCase()] || what);
   }],
   [/^Thanks for leaving a review for\s+(.+)$/i, '感谢你为 $1 留下评价'],
+  [/^Payment from\s+(.+?)\s+-\s+(\S+)$/i, '来自 $1 的付款 - $2'],
+  [/^Be as thorough as you can so that\s+(.+?)\s+can give you an accurate proposal!$/i,
+    function (m, who) {
+      var zh = TERMS[who];
+      return '请尽可能写得详细，这样 ' + (zh !== undefined ? zh : who) + ' 才能给你准确的提案！';
+    }],
 
   /* 时间戳：As of / Submitted / Published + 日期 + 时间 */
   [/^(As of|Submitted|Published|Updated|Created)\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},\s+\d{4})\s+at\s+(.+)$/i,
