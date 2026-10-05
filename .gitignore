@@ -20,3 +20,5 @@ desktop.ini
 *.log
 
 dist/ignore-from-export.txt
+
+dist/ai-config.json
