@@ -20,7 +20,7 @@ const ROOT = dirname(fileURLToPath(import.meta.url));
 const SRC = join(ROOT, 'src');
 const DIST = join(ROOT, 'dist');
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 
 const read = (name) => readFileSync(join(SRC, name), 'utf8');
 
@@ -103,7 +103,18 @@ out.push(read('regex.js').trim());
 out.push('');
 
 out.push('/* ---------------- 内置种子词库（存储为空时用它） ---------------- */');
-out.push('var SEED_TERMS = ' + JSON.stringify(terms) + ';');
+/*
+ * 逐条一行输出，**不要**压成一行 JSON。
+ * GreasyFork 有"压缩代码"检测（看超长行 / 换行密度），一行 16 万字符会被
+ * 判定为最小化代码并拒绝收录。逐条一行只多约 2 KB，而且可读性更好。
+ */
+var dictKeys = Object.keys(terms);
+out.push('var SEED_TERMS = {');
+out.push(dictKeys.map(function (k, i) {
+  return '  ' + JSON.stringify(k) + ': ' + JSON.stringify(terms[k]) +
+         (i === dictKeys.length - 1 ? '' : ',');
+}).join('\n'));
+out.push('};');
 out.push('');
 
 out.push('/* ---------------- engine.js ---------------- */');

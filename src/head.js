@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         VGen 中文化
 // @name:zh-CN   VGen 中文化
+// @name:en      VGen Chinese
 // @namespace    https://github.com/takeez/vgen-chinese
 // @version      __VERSION__
-// @description  Translate vgen.co into Simplified Chinese with a term dictionary (no AI required for the UI).
-// @description:zh-CN 把 vgen.co 界面汉化成简体中文。词库式整条精确匹配，不误伤用户自己写的内容；可选接 API 辅助翻译。
+// @description  把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
+// @description:zh-CN 把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
+// @description:en Translate the vgen.co interface into Simplified Chinese. ~2300 exact-match terms, no AI required.
 // @author       takeez
 // @license      MIT
 // @homepageURL  https://github.com/takeez/vgen-chinese
