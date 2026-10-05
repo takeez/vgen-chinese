@@ -148,3 +148,37 @@ console.log('');
 console.log('  dist/vgen-chinese.user.js   ' + kb(Buffer.byteLength(bundle, 'utf8')) + '   ← 装到篡改猴');
 console.log('  dist/vgen-dict.min.txt      ' + kb(Buffer.byteLength(json, 'utf8')) + '   ← 塞剪贴板更新词库用');
 console.log('  dist/vgen-dict.json         ' + kb(Buffer.byteLength(JSON.stringify(payload, null, 2), 'utf8')) + '   ← 同上，带缩进便于查看');
+
+/* ---------------------------------------------------------- 版本号防呆 */
+
+/*
+ * GreasyFork 从 GitHub 同步这个脚本，它要求「代码变了 @version 必须递增」。
+ * 忘了升版本的话：GF 会报警告，而且已安装的用户**收不到更新**
+ * （篡改猴是靠版本号判断要不要更新的）。所以这里存一份指纹，下次构建时对比。
+ */
+const crypto = await import('node:crypto');
+const stampFile = join(DIST, '.build-stamp.json');
+const hash = crypto.createHash('sha256').update(bundle).digest('hex').slice(0, 16);
+const bare = bundle.replace(/(\/\/ @version\s+)\S+/, '$1<VERSION>');
+const bareHash = crypto.createHash('sha256').update(bare).digest('hex').slice(0, 16);
+
+let prev = null;
+try { prev = JSON.parse(readFileSync(stampFile, 'utf8')); } catch (e) { /* 首次构建 */ }
+
+if (prev && prev.bareHash === bareHash) {
+  console.log('');
+  console.log('✅ 内容与上次构建一致，版本号 ' + VERSION + ' 无需变动。');
+} else if (prev && prev.version === VERSION) {
+  console.log('');
+  console.log('⚠️  内容变了，但版本号还是 ' + VERSION + '！');
+  console.log('    GreasyFork 会报「代码更改但未更新版本」，已安装用户也收不到更新。');
+  console.log('    请把 build.mjs 里的 VERSION 递增后再构建（例如 1.0.1 → 1.0.2）。');
+} else if (prev) {
+  console.log('');
+  console.log('✅ 版本已递增：' + prev.version + ' → ' + VERSION + '，内容已变更（正常）。');
+} else {
+  console.log('');
+  console.log('ℹ️  首次构建，已记录指纹。');
+}
+
+writeFileSync(stampFile, JSON.stringify({ version: VERSION, hash, bareHash }, null, 2), 'utf8');

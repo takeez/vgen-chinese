@@ -3,11 +3,19 @@
 把 [vgen.co](https://vgen.co)（画师委托平台）的界面汉化成简体中文的**油猴脚本**。
 
 [![安装](https://img.shields.io/badge/%E5%AE%89%E8%A3%85-%E7%82%B9%E5%87%BB%E5%AE%89%E8%A3%85%E8%84%9A%E6%9C%AC-2ea44f?style=for-the-badge)](https://raw.githubusercontent.com/takeez/vgen-chinese/main/dist/vgen-chinese.user.js)
+[![GreasyFork](https://img.shields.io/badge/GreasyFork-%E5%AE%89%E8%A3%85-990000?style=for-the-badge)](https://greasyfork.org/zh-CN/scripts/598815)
 [![词条](https://img.shields.io/badge/%E8%AF%8D%E6%9D%A1-2288-blue?style=flat-square)](./dist/vgen-dict.json)
 [![许可](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE)
 
 > 纯**词库 + 正则**本地匹配，**不需要 AI 也能完整工作**。
 > 可选接一个 OpenAI 兼容接口，用来辅助翻译还没收录的文案。
+
+**两个安装渠道，内容相同、各自独立更新：**
+
+| 渠道 | 地址 | 适合 |
+|---|---|---|
+| **GreasyFork** | https://greasyfork.org/zh-CN/scripts/598815 | 推荐。脚本管理器能正常识别更新 |
+| GitHub 直链 | [dist/vgen-chinese.user.js](./dist/vgen-chinese.user.js) | 想直接从仓库装 |
 
 ---
 

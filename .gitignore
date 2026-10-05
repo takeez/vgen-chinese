@@ -24,3 +24,5 @@ dist/ignore-from-export.txt
 dist/ai-config.json
 
 GreasyFork-提交清单.md
+
+dist/.build-stamp.json
