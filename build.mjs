@@ -50,12 +50,29 @@ const dicts = loadDicts();
 
 const merged = Object.assign({}, ...dicts);
 
-/* 丢掉空译文和重复键。空译文会把页面文字抹掉，宁可不收。 */
+/*
+ * 丢掉空译文和「只差大小写的同值重复键」。
+ * 空译文会把页面文字抹掉，宁可不收。
+ * 大小写变体在运行时由 sanitize() 自动补别名，所以源文件里同时写两份是冗余的，
+ * 而且会让 JSON 出现同名（仅大小写不同）的键，部分工具解析会报错。
+ */
 const terms = {};
+const seenLower = new Map();
 let dropped = 0;
+let dedupCase = 0;
+
 for (const k of Object.keys(merged)) {
   const v = merged[k];
   if (typeof v !== 'string' || v.trim() === '') { dropped++; continue; }
+
+  const lk = k.toLowerCase();
+  if (seenLower.has(lk)) {
+    const canon = seenLower.get(lk);
+    /* 同值的纯大小写变体 → 丢掉；值不同的（真的两种含义）保留 */
+    if (terms[canon] === v) { dedupCase++; continue; }
+  } else {
+    seenLower.set(lk, k);
+  }
   terms[k] = v;
 }
 
@@ -113,7 +130,9 @@ writeFileSync(join(DIST, 'vgen-dict.min.txt'), json, 'utf8');
 
 const kb = (n) => (n / 1024).toFixed(1) + ' KB';
 console.log('版本     : ' + VERSION);
-console.log('词条数   : ' + Object.keys(terms).length + (dropped ? '（丢弃空译文 ' + dropped + ' 条）' : ''));
+console.log('词条数   : ' + Object.keys(terms).length +
+  (dropped ? '（丢弃空译文 ' + dropped + ' 条）' : '') +
+  (dedupCase ? '（合并大小写重复 ' + dedupCase + ' 条）' : ''));
 console.log('');
 console.log('  dist/vgen-chinese.user.js   ' + kb(Buffer.byteLength(bundle, 'utf8')) + '   ← 装到篡改猴');
 console.log('  dist/vgen-dict.min.txt      ' + kb(Buffer.byteLength(json, 'utf8')) + '   ← 塞剪贴板更新词库用');
