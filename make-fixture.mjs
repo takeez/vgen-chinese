@@ -285,6 +285,35 @@ ${engine}
         Z.setTranslateMode(false);
       } catch (e) { out.push('忽略/翻译自检抛错: ' + e.message); }
 
+      /* ⑥ 字体修正的范围：只能打在翻译过的元素上，没翻译的地方一个字都不许碰 */
+      try {
+        var marked = document.querySelectorAll('[data-vgenzh="1"]');
+        out.push('翻译过的元素有标记=' + (marked.length > 0 ? '✅ ' + marked.length + ' 个' : '❌'));
+        if (marked.length) {
+          var csM = getComputedStyle(marked[0]).fontFamily || '';
+          out.push('标记元素字体已修正=' + (csM.indexOf('Noto Sans SC') >= 0 ? '✅' : '❌ ' + csM.slice(0, 60)));
+        }
+        /* 造一个"没被翻译"的元素，它的字体必须保持原样 */
+        var pure = document.createElement('p');
+        pure.textContent = '这段是纯中文，引擎不会碰它';
+        document.body.appendChild(pure);
+        var csP = getComputedStyle(pure).fontFamily || '';
+        out.push('未翻译元素字体未被动=' +
+          (csP.indexOf('Noto Sans SC') < 0 && csP.indexOf('Microsoft YaHei') < 0 ? '✅' : '❌ 被改了: ' + csP.slice(0, 60)));
+        /* 全局 * 规则必须已经不存在 */
+        var hasGlobal = false;
+        for (var si = 0; si < document.styleSheets.length; si++) {
+          var rules; try { rules = document.styleSheets[si].cssRules; } catch (e2) { continue; }
+          if (!rules) continue;
+          for (var ri = 0; ri < rules.length; ri++) {
+            var sel = rules[ri].selectorText || '';
+            /* 注意：这里不用正则，避免在模板字符串里被吃掉反斜杠 */
+            if (sel.charAt(0) === '*' && sel.indexOf('code') >= 0) hasGlobal = true;
+          }
+        }
+        out.push('全局字体覆盖已移除=' + (hasGlobal ? '❌ 还在' : '✅'));
+      } catch (e) { out.push('字体范围自检抛错: ' + e.message); }
+
       try {
         window.VGenZH.openDictPanel();
         var p = document.querySelector('.vgenzh-panel');

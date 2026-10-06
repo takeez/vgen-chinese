@@ -26,3 +26,8 @@ dist/ai-config.json
 GreasyFork-提交清单.md
 
 dist/.build-stamp.json
+
+# 本地诊断脚本与字体测试产物
+tools/
+test/font-coverage.html
+test/font-coverage.png

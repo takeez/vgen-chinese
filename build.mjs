@@ -20,7 +20,7 @@ const ROOT = dirname(fileURLToPath(import.meta.url));
 const SRC = join(ROOT, 'src');
 const DIST = join(ROOT, 'dist');
 
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 
 const read = (name) => readFileSync(join(SRC, name), 'utf8');
 

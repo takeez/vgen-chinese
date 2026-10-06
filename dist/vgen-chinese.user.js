@@ -3,7 +3,7 @@
 // @name:zh-CN   VGen 中文化
 // @name:en      VGen Chinese
 // @namespace    https://github.com/takeez/vgen-chinese
-// @version      1.0.1
+// @version      1.0.2
 // @description  把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
 // @description:zh-CN 把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
 // @description:en Translate the vgen.co interface into Simplified Chinese. ~2300 exact-match terms, no AI required.
@@ -35,7 +35,7 @@
 'use strict';
 
 /* 由 build.mjs 自动生成，请改 src/ 下的源文件，不要直接改本文件 */
-var VERSION = "1.0.1";
+var VERSION = "1.0.2";
 
 /* ---------------- normalize.js ---------------- */
 /* ==========================================================================
@@ -2892,6 +2892,23 @@ function skipAttrs(el) {
 
 /* ------------------------------------------------------------ 翻译单个 */
 
+/*
+ * 给「被我们改过文字」的元素打标记。
+ *
+ * 字体修正只作用于这些元素 —— 影响面从「整页每个元素」缩到「我改过的那些」。
+ * 页面上没被我翻译的东西（图标字体、emoji、日韩文、用户内容、代码块）一个都不碰，
+ * 所以不存在"我的字体栈里没这个字形 → 出方框"的风险。
+ *
+ * 观察器的 attributeFilter 只含 TRANS_ATTRS，不含 data-vgenzh，
+ * 所以打标记不会触发 MutationObserver，不会形成循环。
+ */
+function markTranslated(el) {
+  if (!el || el.nodeType !== 1) return;
+  try {
+    if (el.getAttribute(VGENZH_ATTR) !== '1') el.setAttribute(VGENZH_ATTR, '1');
+  } catch (e) { /* 忽略 */ }
+}
+
 function tryTextNode(node) {
   var raw = node.nodeValue;
   if (!raw || !HAS_LATIN.test(raw)) return;
@@ -2907,6 +2924,7 @@ function tryTextNode(node) {
   }
   if (out === core) return;
   node.nodeValue = lead + out + tail;
+  markTranslated(node.parentElement);
 }
 
 function tryAttrs(el) {
@@ -3026,6 +3044,7 @@ function joinChildren(root) {
     var out = lookup(text);
     if (out === undefined || out === text) continue;
     el.textContent = out;
+    markTranslated(el);
   }
 }
 
@@ -3180,7 +3199,12 @@ function exportMissed() {
  *
  * 注意（副作用）：日文原文也会改用简体字形渲染。VGen 上日文主要出现在
  * 画师名和服务标题里，影响不大；真嫌别扭可以用菜单里那一项关掉。
+ *
+ * ⚠️ 生效范围：**只作用于被我们改过文字的元素**（打了 VGENZH_ATTR 标记的），
+ *    不是整页。原因见 injectFontFix() 的注释。
  */
+var VGENZH_ATTR = 'data-vgenzh';
+
 var FONT_STACK = [
   'Satoshi',
   "'Noto Sans SC'",          /* 本机已装，和站点用的 Noto 系同族，观感最一致 */
@@ -3200,8 +3224,21 @@ var FONT_STACK = [
 
 function injectFontFix() {
   if (!fontFixOn) return;
-  /* 排除等宽场景，免得把代码块的字体也改了 */
-  var css = '*:not(code):not(pre):not(kbd):not(samp):not(tt){' +
+
+  /*
+   * 只对「我们改过文字的元素」生效，不再用 '*:not(...)'。
+   *
+   * 之前那条 '*:not(code):not(pre)...' 等于把整页每个元素的 font-family 都换掉。
+   * 影响面太大：页面上任何依赖自身字体族的东西（图标字体、emoji、日韩文、
+   * 特殊符号字形）都被我这条规则接管了；一旦我的字体栈里没有那个字形，
+   * 浏览器就画方框（tofu）。虽然实测 VGen 没有图标字体，但这是不必要的风险。
+   *
+   * 现在只打 [data-vgenzh]（翻译时给元素打的标记）：
+   *   范围 = 「我改过文字的那几个元素」
+   *   没翻译的地方 = 一个字都不碰
+   * 而「中文像繁体」的问题依然被修掉 —— 因为那正好只发生在我译出来的中文上。
+   */
+  var css = '[' + VGENZH_ATTR + ']:not(code):not(pre):not(kbd):not(samp):not(tt){' +
             'font-family:' + FONT_STACK + ' !important}';
   try {
     if (typeof GM_addStyle === 'function') { GM_addStyle(css); return; }
@@ -3326,11 +3363,12 @@ function saveUserTerm(en, zh, targetEl) {
       if (n.nodeType === 3 && n.nodeValue && HAS_LATIN.test(n.nodeValue)) {
         var m = TRIM_RE.exec(n.nodeValue);
         n.nodeValue = m[1] + zh + m[3];
+        markTranslated(n.parentElement);
         replaced = true;
         break;
       }
     }
-    if (!replaced) targetEl.textContent = zh;
+    if (!replaced) { targetEl.textContent = zh; markTranslated(targetEl); }
     if (targetEl.classList) targetEl.classList.remove('vgenzh-hl');
   }
 }
