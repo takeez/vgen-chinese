@@ -40,3 +40,5 @@ test/*.html
 test/*.htm
 test/*.mhtml
 test/snap/
+
+.msg.tmp
