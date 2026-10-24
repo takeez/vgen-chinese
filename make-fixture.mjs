@@ -552,7 +552,7 @@ ${engine}
           return new Promise(function (res) { setTimeout(res, 400); }).then(function () {
             out.push('中文被换成英文=' +
               (ta.value === 'Sounds good, thanks for checking in!' ? '✅' : '❌ ' + JSON.stringify(ta.value)));
-            out.push('给出了提示=' + (document.querySelector('.vgenzh-chat-hint') ? '✅' : '❌'));
+            out.push('没弹提示=' + (document.querySelector('.vgenzh-chat-hint') ? '❌ 弹了' : '✅'));
             /* 再点一次（现在框里是英文）应该放行，不改内容 */
             send.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
             return new Promise(function (res2) { setTimeout(res2, 200); }).then(function () {

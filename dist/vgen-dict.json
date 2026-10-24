@@ -1,6 +1,6 @@
 {
-  "v": "1.0.8",
-  "count": 2414,
+  "v": "1.0.9",
+  "count": 2416,
   "terms": {
     "About us": "关于我们",
     "Explore": "探索",
@@ -2291,6 +2291,8 @@
     "Name is required": "名称为必填",
     "Description is required": "描述为必填",
     "Type your message...": "输入消息…",
+    "Type your message": "输入消息…",
+    "Type a message...": "输入消息…",
     "Be as detailed as you like...": "想写多详细都可以…",
     "Write a brief description here": "在这里写一段简短描述",
     "Enter new name": "输入新名称",

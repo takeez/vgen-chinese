@@ -3,7 +3,7 @@
 // @name:zh-CN   VGen 中文化
 // @name:en      VGen Chinese
 // @namespace    https://github.com/takeez/vgen-chinese
-// @version      1.0.8
+// @version      1.0.9
 // @description  把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
 // @description:zh-CN 把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
 // @description:en Translate the vgen.co interface into Simplified Chinese. ~2300 exact-match terms, no AI required.
@@ -35,7 +35,7 @@
 'use strict';
 
 /* 由 build.mjs 自动生成，请改 src/ 下的源文件，不要直接改本文件 */
-var VERSION = "1.0.8";
+var VERSION = "1.0.9";
 
 /* ---------------- normalize.js ---------------- */
 /* ==========================================================================
@@ -323,6 +323,13 @@ var REGEX_RULES = [
 
   /* 「XXX description」——接稿弹窗里服务名的后缀。服务名本身是用户内容，原样保留 */
   [/^(.{2,120})\s+description$/, '$1 的描述'],
+
+  /* ---- 聊天里的系统行（截图里抓到的漏翻） ---- */
+  [/^You left a review for\s+(.+)$/i, '你给 $1 留下了评价'],
+  [/^(.{1,60}?)[’']s request was moved to your Waitlist$/i, '$1 的请求已移至你的候补名单'],
+  [/^moved to your Waitlist$/i, '已移至你的候补名单'],
+  [/^(\d+)\s+commission updates?$/i, '$1 条委托更新'],
+  [/^(\d+)\s+review period (?:has |is )?ended$/i, '评价期已结束'],
 
   /* 「月份 年份」：Aug 2026 */
   [/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})$/i,
@@ -2706,6 +2713,8 @@ var SEED_TERMS = {
   "Name is required": "名称为必填",
   "Description is required": "描述为必填",
   "Type your message...": "输入消息…",
+  "Type your message": "输入消息…",
+  "Type a message...": "输入消息…",
   "Be as detailed as you like...": "想写多详细都可以…",
   "Write a brief description here": "在这里写一段简短描述",
   "Enter new name": "输入新名称",
@@ -4259,9 +4268,7 @@ function startChatSendIntercept() {
       }
       setNativeValue(ta, en);
       ta.focus();
-      btn.setAttribute('title', '已译成英文，确认后**再点一次发送**');
-      /* 用一个小的浮标提示，别再点一次就是中文 */
-      showChatHint('已译成英文，确认后再点一次发送');
+      /* 不弹任何提示 —— 输入框里变成英文本身就说明没发出去（用户明确要求） */
     }).catch(function () {
       btn.removeAttribute('data-vgenzh-busy');
       btn.style.opacity = '';
@@ -4282,20 +4289,28 @@ function showChatHint(msg) {
     setTimeout(function () { if (d.parentNode) d.remove(); }, 3200);
   } catch (e) { /* 忽略 */ }
 }
+/* 注：showChatHint 目前没有调用点（用户要求：翻译就翻译，别弹提示）。
+ * 保留函数是为了以后要加"轻提示"时不用重写，且它自带 skip 标记不会干扰翻译。 */
 
+/*
+ * 聊天相关的样式。
+ *
+ * 关键：**不要写死颜色**。自己的消息是紫色气泡（浅色字），对方是浅灰气泡（深色字），
+ * 写死 #777 在紫色上就糊得看不清了。所以原文块和 EN 按钮一律 `color: inherit`
+ * + `opacity`，让它们跟着气泡原生的文字颜色走。
+ */
 var CHAT_CSS =
   '.vgenzh-msg-en-host{position:relative}' +
-  '.vgenzh-msg-en{position:absolute;right:2px;bottom:-6px;z-index:2;' +
-    'font:10px/1 -apple-system,"Segoe UI",sans-serif;padding:1px 5px;border-radius:4px;' +
-    'border:1px solid rgba(0,0,0,.12);background:rgba(255,255,255,.9);color:#888;' +
-    'cursor:pointer;opacity:.45;transition:opacity .15s}' +
-  '.vgenzh-msg-en:hover{opacity:1}' +
-  '[data-vgenzh-msg-orig]{display:none;margin-top:4px;padding:4px 8px;' +
-    'border-left:2px solid #d8d8d8;color:#777;font-size:12px;line-height:1.5;white-space:pre-wrap}' +
-  '[data-vgenzh-msg-orig][data-open="1"]{display:block}' +
-  '.vgenzh-chat-hint{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:2147483000;' +
-    'background:rgba(30,30,30,.92);color:#fff;font:13px/1.4 -apple-system,"Segoe UI","Microsoft YaHei UI",sans-serif;' +
-    'padding:8px 14px;border-radius:8px;pointer-events:none}';
+  /* 极简：无边框无背景，纯文字，继承气泡颜色 */
+  '.vgenzh-msg-en{position:absolute;right:0;bottom:-2px;z-index:2;' +
+    'font:10px/1 -apple-system,"Segoe UI",sans-serif;padding:0 2px;margin:0;' +
+    'border:0;background:transparent;color:inherit;cursor:pointer;' +
+    'opacity:.35;transition:opacity .15s;letter-spacing:.5px}' +
+  '.vgenzh-msg-en:hover{opacity:.85}' +
+  '[data-vgenzh-msg-orig]{display:none;margin-top:3px;padding:2px 0 2px 7px;' +
+    'border-left:2px solid currentColor;opacity:.6;color:inherit;' +
+    'font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word}' +
+  '[data-vgenzh-msg-orig][data-open="1"]{display:block}';
 
 function ensureChatCss() {
   if (document.querySelector('style[data-vgenzh-chat-css]')) return;

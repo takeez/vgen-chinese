@@ -1423,9 +1423,7 @@ function startChatSendIntercept() {
       }
       setNativeValue(ta, en);
       ta.focus();
-      btn.setAttribute('title', '已译成英文，确认后**再点一次发送**');
-      /* 用一个小的浮标提示，别再点一次就是中文 */
-      showChatHint('已译成英文，确认后再点一次发送');
+      /* 不弹任何提示 —— 输入框里变成英文本身就说明没发出去（用户明确要求） */
     }).catch(function () {
       btn.removeAttribute('data-vgenzh-busy');
       btn.style.opacity = '';
@@ -1446,20 +1444,28 @@ function showChatHint(msg) {
     setTimeout(function () { if (d.parentNode) d.remove(); }, 3200);
   } catch (e) { /* 忽略 */ }
 }
+/* 注：showChatHint 目前没有调用点（用户要求：翻译就翻译，别弹提示）。
+ * 保留函数是为了以后要加"轻提示"时不用重写，且它自带 skip 标记不会干扰翻译。 */
 
+/*
+ * 聊天相关的样式。
+ *
+ * 关键：**不要写死颜色**。自己的消息是紫色气泡（浅色字），对方是浅灰气泡（深色字），
+ * 写死 #777 在紫色上就糊得看不清了。所以原文块和 EN 按钮一律 `color: inherit`
+ * + `opacity`，让它们跟着气泡原生的文字颜色走。
+ */
 var CHAT_CSS =
   '.vgenzh-msg-en-host{position:relative}' +
-  '.vgenzh-msg-en{position:absolute;right:2px;bottom:-6px;z-index:2;' +
-    'font:10px/1 -apple-system,"Segoe UI",sans-serif;padding:1px 5px;border-radius:4px;' +
-    'border:1px solid rgba(0,0,0,.12);background:rgba(255,255,255,.9);color:#888;' +
-    'cursor:pointer;opacity:.45;transition:opacity .15s}' +
-  '.vgenzh-msg-en:hover{opacity:1}' +
-  '[data-vgenzh-msg-orig]{display:none;margin-top:4px;padding:4px 8px;' +
-    'border-left:2px solid #d8d8d8;color:#777;font-size:12px;line-height:1.5;white-space:pre-wrap}' +
-  '[data-vgenzh-msg-orig][data-open="1"]{display:block}' +
-  '.vgenzh-chat-hint{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:2147483000;' +
-    'background:rgba(30,30,30,.92);color:#fff;font:13px/1.4 -apple-system,"Segoe UI","Microsoft YaHei UI",sans-serif;' +
-    'padding:8px 14px;border-radius:8px;pointer-events:none}';
+  /* 极简：无边框无背景，纯文字，继承气泡颜色 */
+  '.vgenzh-msg-en{position:absolute;right:0;bottom:-2px;z-index:2;' +
+    'font:10px/1 -apple-system,"Segoe UI",sans-serif;padding:0 2px;margin:0;' +
+    'border:0;background:transparent;color:inherit;cursor:pointer;' +
+    'opacity:.35;transition:opacity .15s;letter-spacing:.5px}' +
+  '.vgenzh-msg-en:hover{opacity:.85}' +
+  '[data-vgenzh-msg-orig]{display:none;margin-top:3px;padding:2px 0 2px 7px;' +
+    'border-left:2px solid currentColor;opacity:.6;color:inherit;' +
+    'font-size:12px;line-height:1.55;white-space:pre-wrap;word-break:break-word}' +
+  '[data-vgenzh-msg-orig][data-open="1"]{display:block}';
 
 function ensureChatCss() {
   if (document.querySelector('style[data-vgenzh-chat-css]')) return;

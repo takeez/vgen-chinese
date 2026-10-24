@@ -221,6 +221,13 @@ var REGEX_RULES = [
   /* 「XXX description」——接稿弹窗里服务名的后缀。服务名本身是用户内容，原样保留 */
   [/^(.{2,120})\s+description$/, '$1 的描述'],
 
+  /* ---- 聊天里的系统行（截图里抓到的漏翻） ---- */
+  [/^You left a review for\s+(.+)$/i, '你给 $1 留下了评价'],
+  [/^(.{1,60}?)[’']s request was moved to your Waitlist$/i, '$1 的请求已移至你的候补名单'],
+  [/^moved to your Waitlist$/i, '已移至你的候补名单'],
+  [/^(\d+)\s+commission updates?$/i, '$1 条委托更新'],
+  [/^(\d+)\s+review period (?:has |is )?ended$/i, '评价期已结束'],
+
   /* 「月份 年份」：Aug 2026 */
   [/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})$/i,
     function (m, mon, year) {

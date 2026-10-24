@@ -16,6 +16,8 @@
 var DICT_PLACEHOLDER = {
   /* ---- 输入框通用 ---- */
   'Type your message...': '输入消息…',
+  'Type your message': '输入消息…',
+  'Type a message...': '输入消息…',
   'Be as detailed as you like...': '想写多详细都可以…',
   'Write a brief description here': '在这里写一段简短描述',
   'Enter new name': '输入新名称',
