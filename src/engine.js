@@ -1578,34 +1578,46 @@ function maybeStartChat() {
  *   委托编号  弹窗文字里的 COMM#XXXX
  */
 
-var DISCUSS_CTX_MAX = 9000;    /* 弹窗文字最多带多少字符 */
+var DISCUSS_CTX_MAX = 2400;    /* 摘要最多带多少字符（原来的整页快照是 9000+，纯噪音） */
 
-var AI_DISCUSS_PROMPT = [
-  '你是一个在中国画师和英文客户之间做中介的助手。画师英语不太好，你帮他理清这一单该怎么写、怎么报价。',
+/*
+ * 提示词一律**正面描述要什么**，不写「不要 XXX」。
+ * 负面指令会把模型的注意力吸到那个东西上，反而更容易犯。
+ */
+var AI_DRAFT_PROMPT = [
+  '你替一个中国画师回 VGen 上的英文客户。画师英语不好，你直接写他要发出去的那条消息。',
   '',
-  '给你的资料是 VGen 接稿弹窗里的全部内容：服务信息、客户选择的授权、参考文件、',
-  '截止日、客户填的附加信息、快速计算，以及画师自己的服务描述和服务条款。',
+  '动笔前先在心里核一遍资料：客户说要做几件、实际列了几件、买了哪种授权、什么时候要。',
+  '这几样里有对不上的，就在消息里顺手跟他确认一句。',
   '',
-  '工作方式：',
-  '1. 用**简体中文**和画师对话，像一个懂行的朋友那样说话，别打官腔',
-  '2. 主动指出资料里的矛盾、遗漏、风险（例如：客户说的数量和列出的数量对不上；',
-  '   他只买了个人授权但需求看起来像商用；截止日和你的交付周期冲突；条款里写明的',
-  '   修改轮数要不要在提案里点一句）',
-  '3. 报价只给**区间 + 依据 + 不确定项**，不要给一个斩钉截铁的数字 —— 最终数字画师自己填',
-  '4. 不确定的事就问画师，不要自己编客户的意图',
-  '5. 回答简短，一次说清一件事；不要一次丢一大段'
+  '写出来像一个真人刚看完委托要求、随手回的一条：',
+  '· 开头打个招呼',
+  '· 说清这单怎么做：几件、什么风格、包含哪些东西',
+  '· 有需要跟客户对一下的地方，直接问出来',
+  '· 最后给价格和大概交付时间',
+  '',
+  '3 到 6 句短句，口语，用最普通的词。像微信里发消息那样。',
+  '输出：这条消息本身。'
 ].join('\n');
 
-var AI_SCOPE_PROMPT = [
-  '你在帮一个中国画师写 VGen 提案里的「范围」（Scope）字段，客户会直接读到这段英文。',
+var AI_PRICE_PROMPT = [
+  '你看 VGen 上一单委托的资料，给中国画师一个报价参考。用中文说，短，能直接拍板。',
   '',
-  '要求：',
-  '1. 英文要自然、礼貌、简洁，像母语者写的，不要中式英语',
-  '2. 只写"确认范围"该说的话：这单会做什么、有哪些附加项、修改/交付/授权的关键约定',
-  '3. 把对话里已经谈定的内容都体现出来，**不要承诺没谈过的东西**',
-  '4. 不要写价格（价格在表单别处填）',
-  '5. 长度控制在 60-160 个英文单词',
-  '6. **只返回 JSON**：{"en": "<英文>", "zh": "<对应的中文，给画师核对用>"}'
+  '算之前先核一遍：客户说的数量、实际列出的条目数、买的授权档位。对不上的地方要指出来。',
+  '',
+  '三段：',
+  '1. 建议区间：$X – $Y',
+  '2. 依据：把你用了哪几个数字、怎么加起来的写清楚，一行一条',
+  '3. 还没定下来的：哪几件事会影响这个价',
+  '',
+  '别只给一个数字。'
+].join('\n');
+
+var AI_DISCUSS_PROMPT = [
+  '你在帮一个中国画师处理 VGen 上的一单委托。他英语不好，你替他看客户要求、算价格、写回复。',
+  '',
+  '说话像朋友：中文，短句，一次说一件事。他问你什么就答什么。',
+  '他要是让你改文案，直接给一版新的英文，能粘贴就用。'
 ].join('\n');
 
 var discussState = null;   /* { key, messages: [{role,content}] } */
@@ -1620,22 +1632,77 @@ function getCommissionKey() {
   } catch (e) { return ''; }
 }
 
-/* 把整个弹窗的可见文字压成一段，当讨论的背景资料 */
-function collectModalContext() {
-  var dlg = document.querySelector('[role="dialog"]');
-  if (!dlg) return '';
-  var clone;
-  try { clone = dlg.cloneNode(true); } catch (e) { return ''; }
-  /* 去掉脚本、svg、我们自己的按钮和原文块 */
-  var junk = clone.querySelectorAll('script,style,svg,' +
-    '[data-vgenzh-field-btn],[data-vgenzh-field-orig],[data-vgenzh-skip]');
-  for (var i = 0; i < junk.length; i++) junk[i].remove();
-  var t = (clone.innerText || clone.textContent || '')
+/*
+ * 摘要：只取"这一单是什么、客户要什么、我收多少"。
+ *
+ * 不把整个弹窗塞进去 —— 里面有大量界面标签、文件说明、条款正文，全是噪音，
+ * 塞进去模型只会复读条款（上一版写出来就是一段法务腔，被用户骂了）。
+ *
+ * 结构（真实快照 2026-10-24）：
+ *   [data-request-form-screen-item] 共 5 个：授权 / 参考与文件 / 能否公开 / 截止日 / 附加信息
+ *   #quick-math                     基础价格
+ *   .policyBox                      服务条款（截断，只要要点部分）
+ */
+function normText(node, max) {
+  if (!node) return '';
+  var t = (node.innerText || node.textContent || '')
+    .replace(/[ \t]+/g, ' ')
     .split('\n').map(function (s) { return s.trim(); })
     .filter(function (s) { return s; })
-    .join('\n');
-  if (t.length > DISCUSS_CTX_MAX) t = t.slice(0, DISCUSS_CTX_MAX) + '\n…（后面还很长，已截断）';
-  return t;
+    .join(' ');
+  return (max && t.length > max) ? t.slice(0, max) + '…' : t;
+}
+
+function buildBrief() {
+  var dlg = document.querySelector('[role="dialog"]');
+  if (!dlg) return '';
+  var lines = [];
+
+  /* 1. 服务名 + 客户下单金额（请求区顶部那一小块） */
+  var hs = dlg.querySelectorAll('h1,h2,h3,h4');
+  for (var i = 0; i < hs.length; i++) {
+    if ((hs[i].textContent || '').trim() !== '请求') continue;
+    var top = hs[i].parentElement;
+    for (var hop = 0; hop < 3 && top; hop++, top = top.parentElement) {
+      var t = normText(top, 220);
+      if (t.length > 60) { lines.push('【这一单】' + t); break; }
+    }
+    break;
+  }
+
+  /* 2. 客户填的 5 个字段：只留"标签 + 值"，把说明文字丢掉 */
+  var items = dlg.querySelectorAll('[data-request-form-screen-item]');
+  for (var j = 0; j < items.length; j++) {
+    var it = items[j];
+    var clone;
+    try { clone = it.cloneNode(true); } catch (e) { continue; }
+    var junk = clone.querySelectorAll(
+      '.questionDescription,p.questionDescription,[data-vgenzh-field-btn],[data-vgenzh-skip]');
+    for (var k = 0; k < junk.length; k++) junk[k].remove();
+    /* 已翻过的话，用隐藏的英文原文，别喂中文回去 */
+    var origEn = it.querySelector('[data-vgenzh-field-orig]');
+    var body = origEn ? normText(origEn, 1200) : normText(clone, 1200);
+    if (!body) continue;
+    /* 授权/选择题：补一句实际选中的是哪个 */
+    var checked = it.querySelector('input:checked,[aria-checked="true"]');
+    var sel = '';
+    if (checked) {
+      var lab = checked.closest ? checked.closest('label') : null;
+      if (lab) sel = '（已选：' + normText(lab, 40) + '）';
+    }
+    lines.push('· ' + body + sel);
+  }
+
+  /* 3. 基础价格 / 项目小计 */
+  var qm = dlg.querySelector('#quick-math');
+  if (qm) lines.push('【快速计算】' + normText(qm, 160));
+
+  /* 4. 服务条款（截断） */
+  var pol = dlg.querySelector('.policyBox');
+  if (pol) lines.push('【服务条款】' + normText(pol, 700));
+
+  var out = lines.join('\n');
+  return out.length > DISCUSS_CTX_MAX ? out.slice(0, DISCUSS_CTX_MAX) + '\n…' : out;
 }
 
 function loadDiscuss(key) {
@@ -1702,6 +1769,14 @@ function ensureDiscussCss() {
 
 /* 注：建元素用下面面板里那个 el()，函数声明会提升，顺序无所谓 */
 
+/*
+ * 讨论窗口。
+ *
+ * 打开就先跑两次调用，把画师最想要的两样东西直接摆在对话里：
+ *   1. 一条能直接发给客户的英文消息（带「填入范围」）
+ *   2. 一个报价参考（区间 + 依据）
+ * 然后就当普通聊天，接着问、接着改。
+ */
 function openDiscussDialog() {
   ensureDiscussCss();
   var old = document.querySelector('.vgenzh-dlg-mask');
@@ -1709,27 +1784,23 @@ function openDiscussDialog() {
 
   var key = getCommissionKey();
   var st = loadDiscuss(key);
-  var ctx = collectModalContext();
+  var brief = buildBrief();
 
   var mask = el('div', 'vgenzh-dlg-mask');
   mask.setAttribute('data-vgenzh-skip', '1');
   var dlg = el('div', 'vgenzh-dlg');
   mask.appendChild(dlg);
 
-  /* 头部 */
   var hd = el('div', 'vgenzh-dlg-hd');
   hd.appendChild(el('span', null, '💬 讨论这单' + (key ? '　' + key : '')));
   var closeBtn = el('button', null, '✕');
   hd.appendChild(closeBtn);
   dlg.appendChild(hd);
 
-  /* 背景摘要（可折叠显示前几行） */
   var ctxBox = el('div', 'vgenzh-dlg-ctx');
-  ctxBox.textContent = '📋 我已读到的资料（' + ctx.length + ' 字）\n' +
-    ctx.split('\n').slice(0, 6).join('\n') + (ctx.length > 200 ? '\n…' : '');
+  ctxBox.textContent = '📋 我看到的（' + brief.length + ' 字）\n' + brief.split('\n').slice(0, 5).join('\n');
   dlg.appendChild(ctxBox);
 
-  /* 对话区 */
   var body = el('div', 'vgenzh-dlg-body');
   dlg.appendChild(body);
 
@@ -1738,67 +1809,102 @@ function openDiscussDialog() {
     d.setAttribute('data-who', who);
     body.appendChild(d);
     body.scrollTop = body.scrollHeight;
-  }
-  for (var i = 0; i < st.messages.length; i++) {
-    renderMsg(st.messages[i].role === 'user' ? 'me' : 'ai', st.messages[i].content);
-  }
-  if (!st.messages.length) {
-    renderMsg('ai', '资料我读到了。你想先聊哪块？比如：\n' +
-      '· 这单有没有哪里要先跟客户确认\n' +
-      '· 该怎么报价\n' +
-      '· 提案的「范围」怎么写');
+    return d;
   }
 
-  /* 输入区 */
+  /* 英文消息气泡下面挂「填入范围」 */
+  function attachFill(node, getText) {
+    var row = el('div', 'vgenzh-dlg-row');
+    var b = el('button', 'primary', '填入范围');
+    row.appendChild(b);
+    node.appendChild(row);
+    b.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      var t = document.querySelector('[role="dialog"] .proposalContainer .scope textarea');
+      if (!t) { b.textContent = '找不到「范围」框'; return; }
+      setNativeValue(t, getText());
+      t.focus();
+      b.textContent = '已填入 ✓';
+      setTimeout(function () { b.textContent = '填入范围'; }, 1600);
+    });
+  }
+
+  for (var i = 0; i < st.messages.length; i++) {
+    var mm = st.messages[i];
+    var node = renderMsg(mm.role === 'user' ? 'me' : 'ai', mm.content);
+    if (mm.kind === 'draft') {
+      node.setAttribute('data-who', 'ai');
+      node.setAttribute('data-kind', 'draft');
+      attachFill(node, (function (txt) { return function () { return txt; }; })(mm.content));
+    }
+  }
+
   var ft = el('div', 'vgenzh-dlg-ftb');
   var ta = el('textarea');
-  ta.placeholder = '用中文说就行，比如「这单我该怎么报价」';
+  ta.placeholder = '直接说，比如「把修改轮数写进去」「报高一点」';
   ft.appendChild(ta);
 
   var row = el('div', 'vgenzh-dlg-row');
   var sendBtn = el('button', 'primary', '发送');
-  var scopeBtn = el('button', null, '生成范围文本');
-  var priceBtn = el('button', null, '帮我估价');
+  var redraftBtn = el('button', null, '重写一版');
+  var repriceBtn = el('button', null, '重新报价');
   row.appendChild(sendBtn);
-  row.appendChild(scopeBtn);
-  row.appendChild(priceBtn);
+  row.appendChild(redraftBtn);
+  row.appendChild(repriceBtn);
   ft.appendChild(row);
   dlg.appendChild(ft);
-
-  /* 输出区（填范围用） */
-  var out = el('div', 'vgenzh-dlg-out');
-  var outEn = el('textarea');
-  var outZh = el('div', 'zh');
-  out.appendChild(el('div', null, '建议填入「范围」的英文（可以直接改）：'));
-  out.appendChild(outEn);
-  out.appendChild(outZh);
-  var outRow = el('div', 'vgenzh-dlg-row');
-  var fillBtn = el('button', 'primary', '填入范围');
-  outRow.appendChild(fillBtn);
-  out.appendChild(outRow);
-  dlg.appendChild(out);
 
   closeBtn.addEventListener('click', function () { mask.remove(); });
   mask.addEventListener('click', function (ev) { if (ev.target === mask) mask.remove(); });
 
   function setBusy(on) {
-    sendBtn.disabled = on; scopeBtn.disabled = on; priceBtn.disabled = on;
-    sendBtn.textContent = on ? '…' : '发送';
+    sendBtn.disabled = on; redraftBtn.disabled = on; repriceBtn.disabled = on;
   }
-
-  function push(who, text) {
-    st.messages.push({ role: who === 'me' ? 'user' : 'assistant', content: text });
-    renderMsg(who, text);
+  /* role 只存 user / assistant（接口只认这两个）；draft 是 assistant 的一种，靠 kind 标记 */
+  function push(role, text, kind) {
+    var m = { role: role, content: text };
+    if (kind) m.kind = kind;
+    st.messages.push(m);
     saveDiscuss();
   }
 
-  function ask(text) {
-    push('me', text);
+  function doDraft() {
+    return AI.draftMessage(brief, st.messages).then(function (en) {
+      if (!en) { renderMsg('ai', '（没写出来，再点一次「重写一版」）'); return; }
+      push('assistant', en, 'draft');
+      var node = renderMsg('ai', en);
+      node.setAttribute('data-kind', 'draft');
+      attachFill(node, (function (txt) { return function () { return txt; }; })(en));
+    });
+  }
+  function doPrice() {
+    return AI.estimatePrice(brief, st.messages).then(function (zh) {
+      if (!zh) { renderMsg('ai', '（没算出来，再点一次「重新报价」）'); return; }
+      push('assistant', zh);
+      renderMsg('ai', zh);
+    });
+  }
+
+  /* 第一次打开：自动把两样东西摆出来 */
+  if (!st.messages.length) {
     setBusy(true);
-    AI.discuss(st.messages, ctx).then(function (ans) {
+    doDraft().then(doPrice).then(function () { setBusy(false); })
+      .catch(function (e) {
+        setBusy(false);
+        renderMsg('ai', '出错了：' + (e && e.message ? e.message : e));
+      });
+  }
+
+  function ask(text) {
+    push('user', text);
+    renderMsg('me', text);
+    setBusy(true);
+    AI.discuss(st.messages, brief).then(function (ans) {
       setBusy(false);
-      if (!ans) { renderMsg('ai', '（没拿到回复，再试一次）'); return; }
-      push('ai', ans);
+      if (!ans) { renderMsg('ai', '（没回，再发一次）'); return; }
+      push('assistant', ans);
+      renderMsg('ai', ans);
     }).catch(function (e) {
       setBusy(false);
       renderMsg('ai', '出错了：' + (e && e.message ? e.message : e));
@@ -1812,34 +1918,13 @@ function openDiscussDialog() {
     ask(v);
   });
 
-  priceBtn.addEventListener('click', function () {
+  redraftBtn.addEventListener('click', function () {
     if (!AI.ready()) return;
-    ask('帮我估这一单的报价：给区间 + 依据 + 不确定项。数字我自己填。');
+    setBusy(true); doDraft().then(function () { setBusy(false); });
   });
-
-  scopeBtn.addEventListener('click', function () {
+  repriceBtn.addEventListener('click', function () {
     if (!AI.ready()) return;
-    setBusy(true);
-    AI.makeScope(st.messages, ctx).then(function (r) {
-      setBusy(false);
-      if (!r || !r.en) { renderMsg('ai', '（没生成出来，再试一次）'); return; }
-      outEn.value = r.en;
-      outZh.textContent = '中文对照：' + (r.zh || '（无）');
-      out.setAttribute('data-open', '1');
-      body.scrollTop = body.scrollHeight;
-    }).catch(function (e) {
-      setBusy(false);
-      renderMsg('ai', '出错了：' + (e && e.message ? e.message : e));
-    });
-  });
-
-  fillBtn.addEventListener('click', function () {
-    var t = document.querySelector('[role="dialog"] .proposalContainer .scope textarea');
-    if (!t) { outZh.textContent = '找不到「范围」输入框，可能界面变了'; return; }
-    setNativeValue(t, outEn.value || '');
-    t.focus();
-    fillBtn.textContent = '已填入 ✓';
-    setTimeout(function () { fillBtn.textContent = '填入范围'; }, 1800);
+    setBusy(true); doPrice().then(function () { setBusy(false); });
   });
 
   document.body.appendChild(mask);
@@ -2689,39 +2774,54 @@ var AI = {
 
   /**
    * 讨论（多轮）。history = [{role:'user'|'assistant', content}]。
-   * context 是接稿弹窗里的全部可见文字，作为 system 的第二段。
+   * brief 是这一单的精简摘要（见 buildBrief）。
    */
-  discuss: function (history, context) {
+  discuss: function (history, brief) {
     var msgs = [{
       role: 'system',
-      content: AI_DISCUSS_PROMPT + '\n\n【这一单的全部资料】\n' + (context || '（没读到弹窗资料）')
+      content: AI_DISCUSS_PROMPT + '\n\n【这一单】\n' + (brief || '（没读到弹窗）')
     }];
     var h = (history || []).slice(-16);
-    for (var i = 0; i < h.length; i++) msgs.push({ role: h[i].role, content: h[i].content });
-    if (msgs.length === 1) msgs.push({ role: 'user', content: '先帮我看看这单有什么要注意的。' });
+    for (var i = 0; i < h.length; i++) {
+      var rr = h[i].role === 'user' ? 'user' : 'assistant';
+      msgs.push({ role: rr, content: h[i].content });
+    }
+    if (msgs.length === 1) msgs.push({ role: 'user', content: '先说说这单要注意什么。' });
     return this.request(msgs).then(function (out) {
       var t = String(out || '').trim();
       return t || null;
     });
   },
 
-  /** 生成「范围」字段的英文 + 中文对照。返回 Promise<{en,zh}|null> */
-  makeScope: function (history, context) {
+  /** 写一版能直接发给客户的英文消息。返回 Promise<string|null> */
+  draftMessage: function (brief, history) {
     var msgs = [{
       role: 'system',
-      content: AI_SCOPE_PROMPT + '\n\n【这一单的全部资料】\n' + (context || '（没读到弹窗资料）')
+      content: AI_DRAFT_PROMPT + '\n\n【这一单】\n' + (brief || '（没读到弹窗）')
     }];
-    var h = (history || []).slice(-16);
-    for (var i = 0; i < h.length; i++) msgs.push({ role: h[i].role, content: h[i].content });
-    msgs.push({ role: 'user', content: '现在按上面谈定的内容，生成「范围」字段的英文和中文对照。只返回 JSON。' });
-    return this.request(msgs).then(function (raw) {
-      var s = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-      var a = s.indexOf('{'), b = s.lastIndexOf('}');
-      if (a < 0 || b < a) return null;
-      var o;
-      try { o = JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
-      if (!o || typeof o.en !== 'string' || !o.en.trim()) return null;
-      return { en: o.en.trim(), zh: typeof o.zh === 'string' ? o.zh.trim() : '' };
+    var h = (history || []).slice(-12);
+    for (var i = 0; i < h.length; i++) msgs.push({ role: h[i].role === 'user' ? 'user' : 'assistant', content: h[i].content });
+    msgs.push({ role: 'user', content: '给客户写一条消息。' });
+    return this.request(msgs).then(function (out) {
+      var t = String(out || '').trim().replace(/^```[\s\S]*?\n/, '').replace(/```\s*$/, '').trim();
+      t = t.replace(/^["'「『]+/, '').replace(/["'」』]+$/, '').trim();
+      if (!t || !/[A-Za-z]/.test(t) || /[\u3400-\u9FFF]/.test(t)) return null;
+      return t;
+    });
+  },
+
+  /** 报价参考（中文，区间+依据）。返回 Promise<string|null> */
+  estimatePrice: function (brief, history) {
+    var msgs = [{
+      role: 'system',
+      content: AI_PRICE_PROMPT + '\n\n【这一单】\n' + (brief || '（没读到弹窗）')
+    }];
+    var h = (history || []).slice(-12);
+    for (var i = 0; i < h.length; i++) msgs.push({ role: h[i].role === 'user' ? 'user' : 'assistant', content: h[i].content });
+    msgs.push({ role: 'user', content: '给个报价参考。' });
+    return this.request(msgs).then(function (out) {
+      var t = String(out || '').trim();
+      return t || null;
     });
   },
 
