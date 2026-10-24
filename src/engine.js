@@ -1711,6 +1711,7 @@ function boot() {
       exportUserTerms: exportUserTerms,
       updateDict: updateDictFromUrl,
       autoCheckDict: autoCheckDictUpdate,
+      lookup: lookup,
       userTerms: function () { return USER_TERMS; },
       ignoreList: function () { return Array.from(IGNORE_TERMS); },
       missed: function () { return Array.from(missed).sort(); },

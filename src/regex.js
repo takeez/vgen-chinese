@@ -5,8 +5,19 @@
  * ========================================================================== */
 
 var UNIT_ZH = {
+  /* 全称 */
   second: '秒', minute: '分钟', hour: '小时', day: '天',
-  week: '周', month: '个月', year: '年'
+  week: '周', month: '个月', year: '年',
+  /* 缩写 —— VGen 的通知列表就是用缩写的（`${n} sec ago` / `${n} min ago` / `${n} hr ago`） */
+  sec: '秒', min: '分钟', hr: '小时',
+  wk: '周', mo: '个月', yr: '年'
+};
+
+var WEEKDAY_ZH = {
+  sunday: '星期日', monday: '星期一', tuesday: '星期二', wednesday: '星期三',
+  thursday: '星期四', friday: '星期五', saturday: '星期六',
+  sun: '周日', mon: '周一', tue: '周二', wed: '周三',
+  thu: '周四', fri: '周五', sat: '周六'
 };
 
 var MONTH_ZH = {
@@ -14,17 +25,61 @@ var MONTH_ZH = {
   jul: '7', aug: '8', sep: '9', oct: '10', nov: '11', dec: '12'
 };
 
+/* 时间正则片段：h:mm / h:mm:ss，AM/PM 可有可无（有没有空格都行，VGen 两种都有）
+ * 两个版本都保证**只有一个捕获组**，这样替换函数的参数位置是稳定的。 */
+var TIME_CORE = '\\d{1,2}:\\d{2}(?::\\d{2})?\\s*(?:[AaPp]\\.?[Mm]\\.?)?';
+var TIME_PAT = '(' + TIME_CORE + ')?';   /* 可选：日期后面可能没有时间 */
+var TIME_REQ = '(' + TIME_CORE + ')';    /* 必需：单独的"时间"文案 */
+
+/*
+ * "7:15AM" / "7:15 AM" / "7:15am" -> "上午7:15" / "下午7:15"
+ * 24 小时制或认不出的原样返回（返回和入参一样时调用方会跳过，不会白改）。
+ */
+function zhTime(t) {
+  var s = String(t).trim();
+  var m = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP])\.?M\.?$/i.exec(s);
+  if (!m) return s;
+  var ap = m[3].toUpperCase() === 'A' ? '上午' : '下午';
+  return ap + parseInt(m[1], 10) + ':' + m[2];
+}
+
+/* 月份 + 日 + 年 组合成中文日期 */
+function zhDate(mon, day, year) {
+  var mm = MONTH_ZH[String(mon).slice(0, 3).toLowerCase()] || mon;
+  var s = mm + '月';
+  if (day !== undefined && day !== null && day !== '') s += parseInt(day, 10) + '日';
+  if (year) s = year + '年' + s;
+  return s;
+}
+
+/* 日期后面接时间；没有时间就不留尾随空格 */
+function joinDate(dateStr, t) {
+  var zt = t ? zhTime(t) : '';
+  return zt ? dateStr + ' ' + zt : dateStr;
+}
+
+var MONTH_PAT = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\.?';
+
+/* 时间单位（长的在前，避免 sec 抢掉 second）；复数由 unitZh 去掉 s 处理 */
+var UNIT_PAT = '(seconds|second|secs|sec|minutes|minute|mins|min|hours|hour|hrs|hr|days|day|weeks|week|wks|wk|months|month|mos|mo|years|year|yrs|yr)';
+
+function unitZh(u) {
+  var k = String(u).toLowerCase();
+  return UNIT_ZH[k] || UNIT_ZH[k.replace(/s$/, '')] || u;
+}
+
 var REGEX_RULES = [
 
   /* ------------------------------------------------------ 相对时间 */
-  [/^(\d+)\s*(second|minute|hour|day|week|month|year)s?\s+ago$/i, function (m, n, u) {
-    return n + (UNIT_ZH[u.toLowerCase()] || u) + '前';
+  /* 注意：VGen 的通知列表用的是缩写（sec / min / hr），所以单位必须放宽 */
+  [new RegExp('^(\\d+)\\s*' + UNIT_PAT + '\\s+ago$', 'i'), function (m, n, u) {
+    return n + unitZh(u) + '前';
   }],
-  [/^in\s+(\d+)\s*(second|minute|hour|day|week|month|year)s?$/i, function (m, n, u) {
-    return n + (UNIT_ZH[u.toLowerCase()] || u) + '后';
+  [new RegExp('^in\\s+(\\d+)\\s*' + UNIT_PAT + '$', 'i'), function (m, n, u) {
+    return n + unitZh(u) + '后';
   }],
-  [/^a\s+(second|minute|hour|day|week|month|year)\s+ago$/i, function (m, u) {
-    return '1' + (UNIT_ZH[u.toLowerCase()] || u) + '前';
+  [new RegExp('^an?\\s+' + UNIT_PAT + '\\s+ago$', 'i'), function (m, u) {
+    return '1' + unitZh(u) + '前';
   }],
   [/^just\s+now$/i, '刚刚'],
   [/^yesterday$/i, '昨天'],
@@ -32,13 +87,60 @@ var REGEX_RULES = [
   [/^tomorrow$/i, '明天'],
 
   /* ---------------------------------------------------------- 日期 */
-  [/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})$/i,
-    function (m, mon, day, year) {
-      return year + '年' + (MONTH_ZH[mon.slice(0, 3).toLowerCase()] || mon) + '月' + parseInt(day, 10) + '日';
+  /*
+   * VGen 用 dayjs 的 calendar() 显示"相对日期"，按远近输出四种形态：
+   *   今天    -> "Today at 7:15 AM"
+   *   昨天    -> "Yesterday at 7:15 AM"
+   *   一周内  -> "Monday at 7:15 AM" / "Last Monday at 7:15 AM"
+   *   同年更早 -> "Oct 24 at 7:15 AM"
+   *   跨年    -> "Oct 24, 2026 at 7:15 AM"
+   * 另外 h:mm A 有空格、h:mmA 没空格，两种都要吃下。
+   *
+   * ⚠️ MONTH_PAT 是**非捕获**的（(?:...)），需要捕获月份的地方必须自己包一层 ()，
+   *    否则后面的捕获组序号整体错位 —— 这个坑踩过一次（time 收到了月份名）。
+   */
+  [new RegExp('^(Today|Yesterday|Tomorrow)\\s+at\\s+' + TIME_PAT + '$', 'i'),
+    function (m, d, t) {
+      var map = { today: '今天', yesterday: '昨天', tomorrow: '明天' };
+      return joinDate(map[d.toLowerCase()], t);
     }],
-  [/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})$/i,
+
+  [new RegExp('^(?:Last\\s+)?(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\\s+at\\s+' + TIME_PAT + '$', 'i'),
+    function (m, d, t) {
+      return joinDate(WEEKDAY_ZH[d.toLowerCase()] || d, t);
+    }],
+
+  /* 带年份 + 可选 at + 时间（三种写法都收） */
+  [new RegExp('^(' + MONTH_PAT + ')\\s+(\\d{1,2}),?\\s+(\\d{4})\\s*,?\\s*(?:at\\s+)?' + TIME_PAT + '$', 'i'),
+    function (m, mon, day, year, t) {
+      return joinDate(zhDate(mon, day, year), t);
+    }],
+
+  /* 日-月-年 at 时间：24 Oct, 2026 at 7:15am */
+  [new RegExp('^(\\d{1,2})\\s+(' + MONTH_PAT + ')\\s*,?\\s*(\\d{4})?\\s+at\\s+' + TIME_PAT + '$', 'i'),
+    function (m, day, mon, year, t) {
+      return joinDate(zhDate(mon, day, year), t);
+    }],
+
+  /* 无年份 + at 时间：「Oct 24 at 7:15AM」← 截图那个 */
+  [new RegExp('^(' + MONTH_PAT + ')\\s+(\\d{1,2})\\s+at\\s+' + TIME_PAT + '$', 'i'),
+    function (m, mon, day, t) {
+      return joinDate(zhDate(mon, day), t);
+    }],
+
+  /* 纯日期 */
+  [new RegExp('^(' + MONTH_PAT + ')\\s+(\\d{1,2}),?\\s+(\\d{4})$', 'i'),
+    function (m, mon, day, year) {
+      return zhDate(mon, day, year);
+    }],
+  [new RegExp('^(' + MONTH_PAT + ')\\s+(\\d{1,2})$', 'i'),
     function (m, mon, day) {
-      return (MONTH_ZH[mon.slice(0, 3).toLowerCase()] || mon) + '月' + parseInt(day, 10) + '日';
+      return zhDate(mon, day);
+    }],
+  /* 单独的月份名（May 排除：它同时是常用词，误伤面太大） */
+  [/^(January|February|March|April|June|July|August|September|October|November|December)$/i,
+    function (m, mon) {
+      return (MONTH_ZH[mon.slice(0, 3).toLowerCase()] || mon) + '月';
     }],
 
   /* ------------------------------------------------------ 计数 / 统计 */
@@ -73,6 +175,12 @@ var REGEX_RULES = [
   [/^(\d+)\s+days?\s+left$/i, '剩余 $1 天'],
   [/^(\d+)\s+hours?\s+left$/i, '剩余 $1 小时'],
   [/^Slide\s+(\d+)\s+of\s+(\d+)$/i, '第 $1 张，共 $2 张'],
+  /* 分页：VGen 的字符串是 `Page ${r} / ${c}` -> "Page 1 / 2" */
+  [/^Page\s+(\d+)\s*\/\s*(\d+)$/i, '第 $1 / $2 页'],
+  [/^Page\s+(\d+)$/i, '第 $1 页'],
+  /* 被 React 拆开的动作片段：`X submitted a <strong>Request</strong>` */
+  [/^submitted an?$/i, '提交了'],
+  [/^placed an? order$/i, '下了单'],
   [/^\((\d+)%\s*off\)$/i, '（省 $1%）'],
   [/^\((\d+)\s+reviews?\)$/i, '（$1 条评价）'],
   [/^Used for\s+(\d+)\s+services?$/i, '已用于 $1 个服务'],
@@ -89,14 +197,26 @@ var REGEX_RULES = [
     }],
 
   /* 时间戳：As of / Submitted / Published + 日期 + 时间 */
-  [/^(As of|Submitted|Published|Updated|Created)\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},\s+\d{4})\s+at\s+(.+)$/i,
+  [new RegExp('^(As of|Submitted|Published|Updated|Created|Last updated)\\s+(' + MONTH_PAT + '\\s+\\d{1,2},?\\s+\\d{4})\\s+at\\s+' + TIME_PAT + '$', 'i'),
     function (m, prefix, datePart, time) {
-      var map = { 'as of': '截至', 'submitted': '提交于', 'published': '发布于', 'updated': '更新于', 'created': '创建于' };
-      var dm = /^([A-Za-z]+)\.?\s+(\d{1,2}),\s+(\d{4})$/.exec(datePart);
+      var map = {
+        'as of': '截至', 'submitted': '提交于', 'published': '发布于',
+        'updated': '更新于', 'created': '创建于', 'last updated': '最后更新于'
+      };
+      var dm = /^([A-Za-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})$/.exec(datePart);
       if (!dm) return m[0];
-      var zh = dm[3] + '年' + (MONTH_ZH[dm[1].slice(0, 3).toLowerCase()] || dm[1]) + '月' + parseInt(dm[2], 10) + '日';
-      return (map[prefix.toLowerCase()] || prefix) + ' ' + zh + ' ' + time;
+      return (map[prefix.toLowerCase()] || prefix) + ' ' + joinDate(zhDate(dm[1], dm[2], dm[3]), time);
     }],
+
+  /* 单独的时间：7:15 AM / 7:15AM（24 小时制会原样返回，调用方自动跳过） */
+  [new RegExp('^' + TIME_REQ + '$'), function (m, t) {
+    return zhTime(t || '');
+  }],
+
+  /* 单独的星期几：dayjs 的 calendar 在"一周内"时直接输出星期名 */
+  [/^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)$/i, function (m, d) {
+    return WEEKDAY_ZH[d.toLowerCase()] || d;
+  }],
 
   /* 「月份 年份」：Aug 2026 */
   [/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})$/i,

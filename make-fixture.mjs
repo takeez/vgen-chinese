@@ -347,6 +347,26 @@ ${engine}
           (missed.some(function (s) { return s === 'https://' || s === 'YYYY-MM-DD'; }) ? '❌ 被塞进去了' : '✅'));
       } catch (e) { out.push('placeholder 自检抛错: ' + e.message); }
 
+      /* ⑧ 动态文案：日期 / 时间 / 页码（这些是拼接出来的，只能靠正则） */
+      try {
+        var dyn = [
+          ['Today at 7:15 AM', '今天 上午7:15'],
+          ['Oct 24 at 7:15AM', '10月24日 上午7:15'],
+          ['Oct 24, 2026 at 7:15am', '2026年10月24日 上午7:15'],
+          ['Page 1 / 2', '第 1 / 2 页'],
+          ['5 min ago', '5分钟前'],
+          ['3 hr ago', '3小时前'],
+          ['Monday at 7:15 AM', '星期一 上午7:15']
+        ];
+        var badDyn = [];
+        for (var di = 0; di < dyn.length; di++) {
+          var got = window.VGenZH.lookup(dyn[di][0]);
+          if (got !== dyn[di][1]) badDyn.push(dyn[di][0] + ' → ' + JSON.stringify(got));
+        }
+        out.push('动态文案(日期/页码)=' +
+          (badDyn.length ? '❌ ' + badDyn.join(' | ') : '✅ ' + dyn.length + ' 条'));
+      } catch (e) { out.push('动态文案自检抛错: ' + e.message); }
+
       try {
         window.VGenZH.openDictPanel();
         var p = document.querySelector('.vgenzh-panel');
