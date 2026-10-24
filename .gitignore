@@ -34,3 +34,9 @@ test/font-coverage.png
 
 # 本地业务资料（橱窗/条款/价目），不入库
 data/
+
+# 你提供的页面快照（含客户内容），绝不入库
+test/*.html
+test/*.htm
+test/*.mhtml
+test/snap/
