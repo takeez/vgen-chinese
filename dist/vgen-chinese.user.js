@@ -3,7 +3,7 @@
 // @name:zh-CN   VGen 中文化
 // @name:en      VGen Chinese
 // @namespace    https://github.com/takeez/vgen-chinese
-// @version      1.0.9
+// @version      1.1.0
 // @description  把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
 // @description:zh-CN 把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
 // @description:en Translate the vgen.co interface into Simplified Chinese. ~2300 exact-match terms, no AI required.
@@ -35,7 +35,7 @@
 'use strict';
 
 /* 由 build.mjs 自动生成，请改 src/ 下的源文件，不要直接改本文件 */
-var VERSION = "1.0.9";
+var VERSION = "1.1.0";
 
 /* ---------------- normalize.js ---------------- */
 /* ==========================================================================
@@ -4058,6 +4058,14 @@ var chatCache = null;     /* { msgId: {en, zh} } */
 var chatBusy = false;
 var chatPending = false;
 
+/*
+ * 自己发出去的消息：英文 => 中文原文。
+ *
+ * 中译英是你写的，英文我记得；等这条消息在聊天里出现时，直接用它对应的
+ * **中文原文**当译文显示 —— 不用再花钱翻回中文，也不会因为往返丢细节。
+ */
+var sentZh = {};
+
 function loadChatCache() {
   if (chatCache) return chatCache;
   try {
@@ -4179,6 +4187,14 @@ function maybeTranslateChat() {
     if (r.li.getAttribute('data-vgenzh-zh') === '1') continue;
     var hit = cache[r.id];
     if (hit && hit.zh) { applyChatZh(r, hit.zh); continue; }
+    /* 自己发出去的消息：直接用当时的中文原文，不再花钱翻回来 */
+    var own = sentZh[r.text];
+    if (own) {
+      applyChatZh(r, own);
+      cache[r.id] = { en: r.text, zh: own, t: Date.now() };
+      saveChatCache();
+      continue;
+    }
     if (!HAS_LATIN.test(r.text)) continue;
     todo.push(r);
   }
@@ -4268,6 +4284,8 @@ function startChatSendIntercept() {
       }
       setNativeValue(ta, en);
       ta.focus();
+      /* 记住「英文 => 我原本写的中文」，等这条发出后直接用中文原文显示 */
+      try { sentZh[en.trim()] = v; } catch (e2) { /* 忽略 */ }
       /* 不弹任何提示 —— 输入框里变成英文本身就说明没发出去（用户明确要求） */
     }).catch(function () {
       btn.removeAttribute('data-vgenzh-busy');
