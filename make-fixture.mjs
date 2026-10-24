@@ -89,10 +89,10 @@ const html = `<!DOCTYPE html>
     var ZH2EN_MARK = '【我要说的话（中文）】';
     var sys = (body.messages[0] && body.messages[0].content) || '';
 
-    if (userMsg.indexOf('给客户写一条消息') >= 0) {
-      reply = "Hi~ I saw your request. You mentioned five characters but listed six, so I'll draw and quote for six. Price is $60 for the six icons, delivery around Nov 20. Does that work for you?";
-    } else if (userMsg.indexOf('给个报价参考') >= 0) {
-      reply = '建议区间：$55 - $70\\n依据：\\n· 基础价 $10\\n· 6 张 × $10 = $60\\n还没定：是否商用（+50%）';
+    if (userMsg.indexOf('这单要注意什么？给个报价。') >= 0) {
+      reply = '要确认的：客户说 5 个，列了 6 个。\\n报价：$60 - $72（6 个 × $10）\\n范围字段：只写数量这一条。';
+    } else if (userMsg.indexOf('给客户写一条消息') >= 0) {
+      reply = "Hi~ I saw your request. You said five icons but listed six, so I'll quote and draw six. $60 total — does that work?";
     } else if (sys.indexOf('你替他看客户要求') >= 0) {
       reply = '模拟讨论回复：先把 5 还是 6 确认掉。';
     } else if (userMsg.indexOf(CHAT_MARK) >= 0) {
@@ -597,34 +597,43 @@ ${engine}
               ((dlg.textContent || '').indexOf('COMM#NBOI5DUCLRKS') >= 0 ? '✅' : '❌'));
 
             var text = dlg.textContent || '';
-            out.push('自动写了英文消息=' +
-              (/I saw your request/.test(text) ? '✅' : '❌'));
-            out.push('自动给了报价=' +
-              (/建议区间/.test(text) ? '✅' : '❌'));
-            out.push('英文不带中文=' +
-              (/I saw your request[^]*?Does that work/.test(text) ? '✅' : '❌'));
+            out.push('自动给了分析=' + (/要确认的/.test(text) ? '✅' : '❌'));
+            out.push('分析里带报价=' + (/报价：/.test(text) ? '✅' : '❌'));
+            out.push('不自动代写英文=' + (/I saw your request/.test(text) ? '❌ 自动写了' : '✅'));
 
-            /* 在英文气泡里点「填入范围」 */
-            var fillB = dlg.querySelector('.vgenzh-dlg-row button.primary');
-            var scopeTa = document.querySelector('#fake-modal .proposalContainer .scope textarea');
-            var fillBtns = dlg.querySelectorAll('.vgenzh-dlg-row button');
-            for (var fi = 0; fi < fillBtns.length; fi++) {
-              if ((fillBtns[fi].textContent || '').indexOf('填入范围') >= 0) { fillB = fillBtns[fi]; break; }
+            /* 手动点「代写一版英文」，才出现英文 + 填入范围 */
+            var all = dlg.querySelectorAll('.vgenzh-dlg-row button');
+            var draftB = null;
+            for (var ai2 = 0; ai2 < all.length; ai2++) {
+              if ((all[ai2].textContent || '').indexOf('代写一版英文') >= 0) { draftB = all[ai2]; break; }
             }
-            if (fillB) fillB.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            out.push('一键填入范围=' +
-              (scopeTa && /I saw your request/.test(scopeTa.value) ? '✅' : '❌ ' + JSON.stringify(scopeTa && scopeTa.value.slice(0, 30))));
+            out.push('有代写按钮=' + (draftB ? '✅' : '❌'));
+            if (draftB) draftB.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
-            /* 接着聊 */
-            var dta = dlg.querySelector('.vgenzh-dlg-ftb textarea');
-            dta.value = '价格报高一点';
-            var btns2 = dlg.querySelectorAll('.vgenzh-dlg-row button');
-            var send2 = btns2[btns2.length - 3];
-            send2.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            return new Promise(function (res2) { setTimeout(res2, 400); }).then(function () {
-              out.push('后续对话有回复=' +
-                ((dlg.textContent || '').indexOf('模拟讨论回复') >= 0 ? '✅' : '❌'));
-              return null;
+            return new Promise(function (res2) { setTimeout(res2, 500); }).then(function () {
+              var text2 = dlg.textContent || '';
+              out.push('代写后出现英文=' + (/I saw your request/.test(text2) ? '✅' : '❌'));
+
+              var fillB = null;
+              var bs = dlg.querySelectorAll('.vgenzh-dlg-row button');
+              for (var fi = 0; fi < bs.length; fi++) {
+                if ((bs[fi].textContent || '').indexOf('填入范围') >= 0) { fillB = bs[fi]; break; }
+              }
+              var scopeTa = document.querySelector('#fake-modal .proposalContainer .scope textarea');
+              if (fillB) fillB.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              out.push('一键填入范围=' +
+                (scopeTa && /I saw your request/.test(scopeTa.value) ? '✅' : '❌ ' + JSON.stringify(scopeTa && scopeTa.value.slice(0, 30))));
+
+              /* 接着聊 */
+              var dta = dlg.querySelector('.vgenzh-dlg-ftb textarea');
+              dta.value = '价格报高一点';
+              var send2 = dlg.querySelector('.vgenzh-dlg-ftb .vgenzh-dlg-row button');
+              if (send2) send2.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              return new Promise(function (res3) { setTimeout(res3, 400); }).then(function () {
+                out.push('后续对话有回复=' +
+                  ((dlg.textContent || '').indexOf('模拟讨论回复') >= 0 ? '✅' : '❌'));
+                return null;
+              });
             });
           });
         }).catch(function (e) {

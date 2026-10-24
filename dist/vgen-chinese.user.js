@@ -3,7 +3,7 @@
 // @name:zh-CN   VGen 中文化
 // @name:en      VGen Chinese
 // @namespace    https://github.com/takeez/vgen-chinese
-// @version      2.0.1
+// @version      2.0.3
 // @description  把 vgen.co（画师委托平台）汉化成简体中文。约 2400 条词条整条精确匹配，不误伤用户自己写的内容；不需要 AI 就能完整使用。可选接 API：一键翻客户需求、聊天自动翻、中文输入自动转英文、提案讨论与报价参考。
 // @description:zh-CN 把 vgen.co（画师委托平台）汉化成简体中文。约 2400 条词条整条精确匹配，不误伤用户自己写的内容；不需要 AI 就能完整使用。可选接 API：一键翻客户需求、聊天自动翻、中文输入自动转英文、提案讨论与报价参考。
 // @description:en Translate vgen.co into Simplified Chinese with an exact-match term dictionary (no AI needed), plus optional AI help: one-click request translation, auto-translated chat, Chinese-to-English send, and proposal drafting.
@@ -35,7 +35,7 @@
 'use strict';
 
 /* 由 build.mjs 自动生成，请改 src/ 下的源文件，不要直接改本文件 */
-var VERSION = "2.0.1";
+var VERSION = "2.0.3";
 
 /* ---------------- normalize.js ---------------- */
 /* ==========================================================================
@@ -4423,48 +4423,58 @@ function maybeStartChat() {
  *   委托编号  弹窗文字里的 COMM#XXXX
  */
 
-var DISCUSS_CTX_MAX = 2400;    /* 摘要最多带多少字符（原来的整页快照是 9000+，纯噪音） */
+var DISCUSS_CTX_MAX = 1400;    /* 摘要上限（整页快照是 9000+，全是噪音） */
 
 /*
  * 提示词一律**正面描述要什么**，不写「不要 XXX」。
  * 负面指令会把模型的注意力吸到那个东西上，反而更容易犯。
  */
-var AI_DRAFT_PROMPT = [
-  '你替一个中国画师回 VGen 上的英文客户。画师英语不好，你直接写他要发出去的那条消息。',
+/*
+ * 提示词一律**正面描述要找什么**，不写「不要 XXX」——负面指令会把模型的注意力
+ * 吸到那个东西上，反而更容易犯（这个坑踩过）。
+ *
+ * 范围字段的规矩（用户定的，也是 VGen 自己的示例）：
+ *   只写要跟客户确认的事、附加项、和橱窗说明对不上的地方。
+ *   橱窗已经写清楚的、客户自己选的档位、不冲突的交期 —— 这些本来就在页面上，
+ *   重复一遍只会让提案变长、让客户觉得啰嗦。
+ *   一条要确认的都没有，就写一句感谢。
+ */
+var AI_ANALYZE_PROMPT = [
+  '你替一个中国画师看 VGen 上的一单委托。用中文说，短，像朋友随手提醒。',
   '',
-  '动笔前先在心里核一遍资料：客户说要做几件、实际列了几件、买了哪种授权、什么时候要。',
-  '这几样里有对不上的，就在消息里顺手跟他确认一句。',
+  '资料里已经写明的 —— 橱窗内容、客户选的档位、交期 —— 当作已知前提直接用。',
+  '你的输出只写会改变这单做法或价格的东西，主要是这三种：',
+  '· 客户说的数量和实际列的对不上',
+  '· 客户要的超出橱窗范围',
+  '· 数量、范围、交期有歧义',
   '',
-  '写出来像一个真人刚看完委托要求、随手回的一条：',
-  '· 开头打个招呼',
-  '· 说清这单怎么做：几件、什么风格、包含哪些东西',
-  '· 有需要跟客户对一下的地方，直接问出来',
-  '· 最后给价格和大概交付时间',
+  '找到几条说几条。一条都没有，就说「这单没要确认的，回句谢谢就行」。',
   '',
-  '3 到 6 句短句，口语，用最普通的词。像微信里发消息那样。',
-  '输出：这条消息本身。'
+  '然后报价：区间，加你实际用了哪几个数字。',
+  '',
+  '最后一句：范围字段该写哪几条（只列要确认的）。'
 ].join('\n');
 
-var AI_PRICE_PROMPT = [
-  '你看 VGen 上一单委托的资料，给中国画师一个报价参考。用中文说，短，能直接拍板。',
+var AI_DRAFT_PROMPT = [
+  '你替中国画师写 VGen 提案里「范围」字段的一段英文，客户会读到。',
   '',
-  '算之前先核一遍：客户说的数量、实际列出的条目数、买的授权档位。对不上的地方要指出来。',
+  '上面已经分析过这一单，把分析里那几条要确认的事，一条一句写成英文。',
+  '客户自己勾过的选项、橱窗写着的条件，页面上都有，这段直接当已知前提。',
+  '像聊天：开头一句招呼，中间那几条，最后一句价格。两三句就够。',
   '',
-  '三段：',
-  '1. 建议区间：$X – $Y',
-  '2. 依据：把你用了哪几个数字、怎么加起来的写清楚，一行一条',
-  '3. 还没定下来的：哪几件事会影响这个价',
+  '数量对不上的时候照这种写法来：',
+  '"You wrote five, but there are six references here — shall I go with six? Price is for six."',
   '',
-  '别只给一个数字。'
+  '一条要确认的都没有，就写一句感谢委托。',
+  '输出：这段英文本身。'
 ].join('\n');
 
 var AI_DISCUSS_PROMPT = [
-  '你在帮一个中国画师处理 VGen 上的一单委托。他英语不好，你替他看客户要求、算价格、写回复。',
+  '你在帮一个中国画师处理 VGen 上的一单委托。他英语不好，你替他看客户要求、算价格、把要注意的说清楚。',
   '',
   '说话像朋友：中文，短句，一次说一件事。他问你什么就答什么。',
-  '他要是让你改文案，直接给一版新的英文，能粘贴就用。'
+  '他让你改文案，就给一版新的英文，能直接粘贴。'
 ].join('\n');
-
 var discussState = null;   /* { key, messages: [{role,content}] } */
 
 /* 当前弹窗的委托编号（COMM#XXXX），用作讨论记录的键 */
@@ -4542,9 +4552,37 @@ function buildBrief() {
   var qm = dlg.querySelector('#quick-math');
   if (qm) lines.push('【快速计算】' + normText(qm, 160));
 
-  /* 4. 服务条款（截断） */
-  var pol = dlg.querySelector('.policyBox');
-  if (pol) lines.push('【服务条款】' + normText(pol, 700));
+  /*
+   * 4. 橱窗「画什么」——只取服务描述那一段（含 What you will get）。
+   * 服务条款一律不带：那是画师自己定过的规矩，页面上客户也能看到，
+   * 塞进上下文只会让模型复读条款（第一版写出来就是一段法务腔，被骂过）。
+   */
+  var heads = dlg.querySelectorAll('.sidePanelSectionHeader');
+  for (var hd = 0; hd < heads.length; hd++) {
+    if (!/\sdescription$/i.test((heads[hd].textContent || '').trim())) continue;
+    var host = heads[hd].parentElement && heads[hd].parentElement.parentElement;
+    var dbox = host && host.querySelector('.policyBox');
+    if (dbox) lines.push('【橱窗说明】' + normText(dbox, 260));
+    break;
+  }
+
+  /*
+   * 5. 已确定的（页面上都写着）——单独列一段。
+   *    实测：不写这段，模型会重复让客户「确认」授权档位和交期，写出来全是废话。
+   */
+  var fixed = [];
+  var dateIn = dlg.querySelector('input[type="date"]');
+  if (dateIn && dateIn.value) fixed.push('截止 ' + dateIn.value);
+  if (qm) {
+    var money = qm.querySelector('input.formField');
+    if (money && money.value) fixed.push('基础价 ' + money.value + '/件');
+  }
+  var licIn = dlg.querySelector('[data-request-form-screen-item] input:checked');
+  if (licIn && licIn.closest) {
+    var licLab = licIn.closest('label');
+    if (licLab) fixed.push('授权 ' + normText(licLab, 30));
+  }
+  if (fixed.length) lines.unshift('【已定，页面上写着，不用再问客户】' + fixed.join('；'));
 
   var out = lines.join('\n');
   return out.length > DISCUSS_CTX_MAX ? out.slice(0, DISCUSS_CTX_MAX) + '\n…' : out;
@@ -4692,8 +4730,8 @@ function openDiscussDialog() {
 
   var row = el('div', 'vgenzh-dlg-row');
   var sendBtn = el('button', 'primary', '发送');
-  var redraftBtn = el('button', null, '重写一版');
-  var repriceBtn = el('button', null, '重新报价');
+  var redraftBtn = el('button', null, '代写一版英文');
+  var repriceBtn = el('button', null, '重新分析');
   row.appendChild(sendBtn);
   row.appendChild(redraftBtn);
   row.appendChild(repriceBtn);
@@ -4725,16 +4763,24 @@ function openDiscussDialog() {
   }
   function doPrice() {
     return AI.estimatePrice(brief, st.messages).then(function (zh) {
-      if (!zh) { renderMsg('ai', '（没算出来，再点一次「重新报价」）'); return; }
+      if (!zh) { renderMsg('ai', '（没算出来，再点一次「重新分析」）'); return; }
       push('assistant', zh);
       renderMsg('ai', zh);
     });
   }
 
-  /* 第一次打开：自动把两样东西摆出来 */
+  function doAnalyze() {
+    return AI.analyze(brief, st.messages).then(function (zh) {
+      if (!zh) { renderMsg('ai', '（没分析出来，再点一次「重新分析」）'); return; }
+      push('assistant', zh);
+      renderMsg('ai', zh);
+    });
+  }
+
+  /* 第一次打开：直接给「要注意什么 + 报价」。措辞不代笔，画师自己写。 */
   if (!st.messages.length) {
     setBusy(true);
-    doDraft().then(doPrice).then(function () { setBusy(false); })
+    doAnalyze().then(function () { setBusy(false); })
       .catch(function (e) {
         setBusy(false);
         renderMsg('ai', '出错了：' + (e && e.message ? e.message : e));
@@ -4769,7 +4815,7 @@ function openDiscussDialog() {
   });
   repriceBtn.addEventListener('click', function () {
     if (!AI.ready()) return;
-    setBusy(true); doPrice().then(function () { setBusy(false); });
+    setBusy(true); doAnalyze().then(function () { setBusy(false); });
   });
 
   document.body.appendChild(mask);
@@ -5638,6 +5684,22 @@ var AI = {
     });
   },
 
+  /** 分析这一单：要确认什么 + 报价参考。返回 Promise<string|null> */
+  analyze: function (brief, history) {
+    var msgs = [{
+      role: 'system',
+      content: AI_ANALYZE_PROMPT + '\n\n【这一单】\n' + (brief || '（没读到弹窗）')
+    }];
+    var h = (history || []).slice(-12);
+    for (var i = 0; i < h.length; i++) {
+      msgs.push({ role: h[i].role === 'user' ? 'user' : 'assistant', content: h[i].content });
+    }
+    msgs.push({ role: 'user', content: '这单要注意什么？给个报价。' });
+    return this.request(msgs).then(function (out) {
+      var t = String(out || '').trim();
+      return t || null;
+    });
+  },
   /** 写一版能直接发给客户的英文消息。返回 Promise<string|null> */
   draftMessage: function (brief, history) {
     var msgs = [{
