@@ -85,7 +85,20 @@ const html = `<!DOCTYPE html>
     var payload = null;
     try { payload = JSON.parse(userMsg); } catch (e) { payload = null; }
 
-    if (payload && payload.items) {
+    var CHAT_MARK = '【需要翻译的条目】';
+    var ZH2EN_MARK = '【我要说的话（中文）】';
+
+    if (userMsg.indexOf(CHAT_MARK) >= 0) {
+      /* 聊天批量：标记后面跟一个 [{id,text}] 数组 -> {id:"模拟中文"} */
+      var arr = [];
+      try { arr = JSON.parse(userMsg.slice(userMsg.indexOf(CHAT_MARK) + CHAT_MARK.length).trim()); }
+      catch (e) { arr = []; }
+      var cm = {};
+      arr.forEach(function (it) { if (it && it.id) cm[it.id] = '模拟中文'; });
+      reply = JSON.stringify(cm);
+    } else if (userMsg.indexOf(ZH2EN_MARK) >= 0) {
+      reply = 'Sounds good, thanks for checking in!';
+    } else if (payload && payload.items) {
       var out = {};
       payload.items.forEach(function (en) {
         if (en.indexOf('Skip') >= 0) return;          /* 故意漏一条 */
@@ -205,6 +218,34 @@ ${engine}
 </div>
 <!-- 真代码块：必须有 <code>，引擎要跳过它 -->
 <pre id="real-code"><code>const status = "Draft";</code></pre>
+
+<h2>💬 仿聊天（Stream Chat 结构，照抄真实快照）</h2>
+<div class="str-chat__list">
+  <ul class="str-chat__ul">
+    <li class="str-chat__li" data-message-id="msg-1">
+      <div class="str-chat__message str-chat__message--other">
+        <div class="str-chat__message-inner"><div class="str-chat__message-bubble">
+          <div class="str-chat__message-text">
+            <div class="str-chat__message-text-inner"><div>Oh thank you! It's great!</div></div>
+          </div>
+        </div></div>
+      </div>
+    </li>
+    <li class="str-chat__li" data-message-id="msg-2">
+      <div class="str-chat__message str-chat__message--me">
+        <div class="str-chat__message-inner"><div class="str-chat__message-bubble">
+          <div class="str-chat__message-text">
+            <div class="str-chat__message-text-inner"><div>Although it was difficult, I finally managed to do it.</div></div>
+          </div>
+        </div></div>
+      </div>
+    </li>
+  </ul>
+</div>
+<div class="str-chat__message-input">
+  <textarea data-testid="message-input"></textarea>
+  <button class="sendButton" type="button"><span>send</span></button>
+</div>
 
 <h2>⚠️ 用户自己写的内容（必须保持英文原样）</h2><div class="userblob">
   <div><strong>Komori_night</strong> <span class="muted">· 2 days ago</span></div>
@@ -476,6 +517,49 @@ ${engine}
               out.push('点EN后展开=' + (orig.getAttribute('data-open') === '1' ? '✅' : '❌'));
             }
             return null;
+          });
+        }).then(function () {
+          /* 聊天：rescan 触发 maybeStartChat -> 自动翻 */
+          window.VGenZH.rescan();
+          return new Promise(function (res) { setTimeout(res, 400); }).then(function () {
+            var t1 = document.querySelector('[data-message-id="msg-1"] .str-chat__message-text-inner');
+            out.push('聊天消息已翻中文=' +
+              (t1 && /[一-龥]/.test(t1.textContent) ? '✅' : '❌ ' + JSON.stringify(t1 && t1.textContent.slice(0, 30))));
+            out.push('我发的也翻了=' +
+              (function () {
+                var t2 = document.querySelector('[data-message-id="msg-2"] .str-chat__message-text-inner');
+                return t2 && /[一-龥]/.test(t2.textContent) ? '✅' : '❌';
+              })());
+            var enBtn = document.querySelector('[data-message-id="msg-1"] .vgenzh-msg-en');
+            var msgOrig = document.querySelector('[data-message-id="msg-1"] [data-vgenzh-msg-orig]');
+            out.push('聊天有EN按钮=' + (enBtn ? '✅' : '❌'));
+            out.push('聊天原文块默认隐藏=' + (msgOrig && msgOrig.getAttribute('data-open') !== '1' ? '✅' : '❌'));
+            out.push('聊天原文内容正确=' +
+              (msgOrig && msgOrig.textContent.indexOf("Oh thank you") === 0 ? '✅' : '❌ ' + JSON.stringify(msgOrig && msgOrig.textContent.slice(0, 30))));
+            if (enBtn && msgOrig) {
+              enBtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              out.push('聊天点EN后展开=' + (msgOrig.getAttribute('data-open') === '1' ? '✅' : '❌'));
+            }
+            return null;
+          });
+        }).then(function () {
+          /* 发送拦截：打中文 -> 点发送 -> 不许发送，内容换成英文 */
+          var ta = document.querySelector('textarea[data-testid="message-input"]');
+          var send = document.querySelector('button.sendButton');
+          if (!ta || !send) { out.push('聊天输入区缺失=❌'); return null; }
+          ta.value = '我觉得可以，明天发你';
+          send.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          return new Promise(function (res) { setTimeout(res, 400); }).then(function () {
+            out.push('中文被换成英文=' +
+              (ta.value === 'Sounds good, thanks for checking in!' ? '✅' : '❌ ' + JSON.stringify(ta.value)));
+            out.push('给出了提示=' + (document.querySelector('.vgenzh-chat-hint') ? '✅' : '❌'));
+            /* 再点一次（现在框里是英文）应该放行，不改内容 */
+            send.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+            return new Promise(function (res2) { setTimeout(res2, 200); }).then(function () {
+              out.push('英文原样放行=' +
+                (ta.value === 'Sounds good, thanks for checking in!' ? '✅' : '❌ ' + JSON.stringify(ta.value)));
+              return null;
+            });
           });
         }).catch(function (e) {
           out.push('API 测试抛错: ' + (e && e.message ? e.message : e));

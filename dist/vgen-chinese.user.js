@@ -3,7 +3,7 @@
 // @name:zh-CN   VGen 中文化
 // @name:en      VGen Chinese
 // @namespace    https://github.com/takeez/vgen-chinese
-// @version      1.0.7
+// @version      1.0.8
 // @description  把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
 // @description:zh-CN 把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
 // @description:en Translate the vgen.co interface into Simplified Chinese. ~2300 exact-match terms, no AI required.
@@ -35,7 +35,7 @@
 'use strict';
 
 /* 由 build.mjs 自动生成，请改 src/ 下的源文件，不要直接改本文件 */
-var VERSION = "1.0.7";
+var VERSION = "1.0.8";
 
 /* ---------------- normalize.js ---------------- */
 /* ==========================================================================
@@ -2872,7 +2872,8 @@ var CONFIG = {
     missed: 'vgenzh_missed',
     aiEndpoint: 'vgenzh_ai_endpoint',
     aiKey: 'vgenzh_ai_key',
-    aiModel: 'vgenzh_ai_model'
+    aiModel: 'vgenzh_ai_model',
+    chatCache: 'vgenzh_chat_cache'
   }
 };
 
@@ -3338,6 +3339,9 @@ function translate(root) {
 
   /* 接稿弹窗里的自由文本字段：挂「译」按钮。没有弹窗时这一步立即返回 */
   maybeInjectRequestFields();
+
+  /* 聊天页：自动翻消息（没有聊天列表时立即返回） */
+  maybeStartChat();
 }
 
 /* -------------------------------------------------- 被拆开的文本 */
@@ -3991,6 +3995,329 @@ function maybeInjectRequestFields() {
 
   ensureFieldCss();
   for (var j = 0; j < todo.length; j++) injectOneField(todo[j]);
+}
+
+/* -------------------------------------------------- 聊天消息翻译 */
+
+/*
+ * 结构（真实页面快照 2026-10-24，Stream Chat React）：
+ *   li.str-chat__li[data-message-id]
+ *     div.str-chat__message … --me / --other
+ *       div.str-chat__message-inner > div.str-chat__message-bubble
+ *         div.str-chat__message-text > div.str-chat__message-text-inner > div  ← 正文
+ *   textarea[data-testid="message-input"]   ← 输入框
+ *   button.sendButton                       ← 发送按钮（没有 aria-label）
+ *
+ * 规则（用户定的）：
+ *   · 双方消息都自动翻成中文，默认显示中文
+ *   · 每条右下角小「EN」，点一下在下面展开英文原文
+ *   · 进聊天自动翻最近 50 条；新消息自动翻
+ *   · 输入框里打中文 → 点发送 → **先不发送**，把内容换成英文（可改）→ 再点一次才真发
+ *   · 输入框主要是英文 → 原样发
+ */
+
+var CHAT_LI_SEL = 'li.str-chat__li[data-message-id]';
+var CHAT_TEXT_SEL = '.str-chat__message-text-inner';
+var CHAT_MAX = 50;            /* 一次最多翻多少条 */
+var CHAT_CTX = 8;             /* 中译英时带几条上下文 */
+var CHAT_CACHE_MAX = 600;
+
+var AI_CHAT_PROMPT = [
+  '你在帮一个英语不太好的中国画师看懂 VGen 上和客户的英文对话。',
+  '',
+  '给你对话上下文和一批需要翻译的消息，逐条翻成简体中文。',
+  '规则：',
+  '1. 结合上下文翻译：代词（it / that / this one）要看上下文确定到底指什么，不要含糊',
+  '2. 口语、缩写、拼写错误理顺成通顺中文，但**不要改变意思**',
+  '3. 保留原句的语气 —— 客气、催促、道歉、失望、开玩笑，都要在中文里体现出来',
+  '4. 每条独立翻译，不要合并、不要串味',
+  '5. 只返回 JSON，键是条目的 id，值是中文译文：{"<id>": "<中文>"}',
+  '6. 不要解释、不要加前言'
+].join('\n');
+
+var AI_ZH2EN_PROMPT = [
+  '你在帮一个中国画师写英文回复，对方是 VGen 上的英文客户。',
+  '',
+  '规则：',
+  '1. 译成**自然、口语、礼貌**的英文（日常沟通风格），不要过于正式，不要中式英语',
+  '2. 结合对话上下文，代词和指代要清楚，别让客户看不懂你在说哪件事',
+  '3. 保留画师原本的语气和意图，**不要加他没说的内容**，不要过度道歉或过度承诺',
+  '4. 只输出英文本身，不要引号、不要解释、不要加 "Here is" 这类前言'
+].join('\n');
+
+var chatCache = null;     /* { msgId: {en, zh} } */
+var chatBusy = false;
+var chatPending = false;
+
+function loadChatCache() {
+  if (chatCache) return chatCache;
+  try {
+    var o = GM_getValue(CONFIG.KEY.chatCache, null);
+    chatCache = (o && typeof o === 'object') ? o : {};
+  } catch (e) { chatCache = {}; }
+  return chatCache;
+}
+
+function saveChatCache() {
+  try {
+    var c = loadChatCache();
+    var keys = Object.keys(c);
+    if (keys.length > CHAT_CACHE_MAX) {
+      /* 按时间戳砍掉最老的 */
+      keys.sort(function (a, b) { return (c[a].t || 0) - (c[b].t || 0); });
+      var drop = keys.length - CHAT_CACHE_MAX;
+      for (var i = 0; i < drop; i++) delete c[keys[i]];
+    }
+    GM_setValue(CONFIG.KEY.chatCache, c);
+  } catch (e) { /* 忽略 */ }
+}
+
+/* 一条消息的正文容器（优先取内层 div；翻过之后用记下来的那个） */
+function chatTextBox(li) {
+  var inner = li.querySelector(CHAT_TEXT_SEL);
+  if (!inner) return null;
+  var marked = inner.querySelector('[data-vgenzh-box]');
+  if (marked) return marked;
+  var kids = inner.children;
+  if (kids && kids.length === 1 && kids[0].tagName === 'DIV') return kids[0];
+  return inner;
+}
+
+/* 收集当前会话的消息（最近 CHAT_MAX 条，已翻过的跳过） */
+function collectChatEntries() {
+  var lis, out = [];
+  try { lis = document.querySelectorAll(CHAT_LI_SEL); } catch (e) { return out; }
+  for (var i = 0; i < lis.length; i++) {
+    var li = lis[i];
+    if (li.getAttribute('data-vgenzh-zh') === '1') continue;   /* 每条只处理一次 */
+    var id = li.getAttribute('data-message-id');
+    if (!id) continue;
+    var box = chatTextBox(li);
+    if (!box) continue;
+    var txt = (box.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!txt) continue;
+    out.push({
+      id: id,
+      li: li,
+      box: box,
+      text: txt,
+      mine: !!li.querySelector('.str-chat__message--me')
+    });
+  }
+  return out.slice(Math.max(0, out.length - CHAT_MAX));
+}
+
+/* 中文占比判断：中文字符数 > 英文字母数 → 认为是中文 */
+function isMostlyChinese(s) {
+  var zh = (String(s).match(/[\u3400-\u9FFF]/g) || []).length;
+  var en = (String(s).match(/[A-Za-z]/g) || []).length;
+  return zh > 0 && zh >= en;
+}
+
+/*
+ * 给正文加「中文 + 隐藏原文 + EN 开关」。
+ * 标记打在 **li** 上（不是正文 div）：正文下面多了原文块之后，chatTextBox
+ * 拿到的节点会变，用 li 做幂等判断才不会重复翻译（这个坑踩过一次）。
+ */
+function applyChatZh(rec, zh) {
+  var li = rec.li, box = rec.box;
+  if (!li || !box) return;
+  if (li.getAttribute('data-vgenzh-zh') === '1') return;
+  li.setAttribute('data-vgenzh-zh', '1');
+  box.setAttribute('data-vgenzh-box', '1');
+
+  var en = rec.text;
+  box.textContent = zh;
+  markTranslated(box);
+
+  var orig = document.createElement('div');
+  orig.setAttribute('data-vgenzh-msg-orig', '1');
+  orig.setAttribute('data-vgenzh-skip', '1');
+  orig.textContent = en;
+  if (box.parentNode) box.parentNode.insertBefore(orig, box.nextSibling);
+
+  var bubble = li.querySelector('.str-chat__message-bubble') || box.parentElement;
+  if (!bubble) return;
+  try { bubble.classList.add('vgenzh-msg-en-host'); } catch (e) { /* 忽略 */ }
+  if (bubble.querySelector('.vgenzh-msg-en')) return;   /* 按钮只插一次 */
+
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'vgenzh-msg-en';
+  btn.textContent = 'EN';
+  btn.title = '展开 / 收起英文原文';
+  btn.setAttribute('data-vgenzh-skip', '1');
+  btn.addEventListener('click', function (ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    var open = orig.getAttribute('data-open') === '1';
+    orig.setAttribute('data-open', open ? '0' : '1');
+    btn.textContent = open ? 'EN' : '收起';
+  });
+  bubble.appendChild(btn);
+}
+
+/* 把还没翻的消息送去翻一次 */
+function maybeTranslateChat() {
+  if (!enabled || !AI.ready() || chatBusy) return;
+  var list = collectChatEntries();
+  if (!list.length) return;
+
+  var cache = loadChatCache();
+  var todo = [];
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i];
+    if (r.li.getAttribute('data-vgenzh-zh') === '1') continue;
+    var hit = cache[r.id];
+    if (hit && hit.zh) { applyChatZh(r, hit.zh); continue; }
+    if (!HAS_LATIN.test(r.text)) continue;
+    todo.push(r);
+  }
+  if (!todo.length) return;
+
+  chatBusy = true;
+  /* 上下文用整段（含已翻的），让模型知道在聊什么 */
+  var ctx = list.filter(function (r) { return r.text; })
+                .map(function (r) { return { text: r.text, mine: r.mine }; });
+  var payload = todo.map(function (r) { return { id: r.id, text: r.text }; });
+
+  AI.translateChat(payload, ctx).then(function (map) {
+    var c = loadChatCache();
+    var now = Date.now();
+    for (var i = 0; i < todo.length; i++) {
+      var r = todo[i];
+      var zh = map[r.id];
+      if (!zh) continue;
+      c[r.id] = { en: r.text, zh: zh, t: now };
+      applyChatZh(r, zh);
+    }
+    saveChatCache();
+    chatBusy = false;
+    if (Object.keys(map).length < todo.length) {
+      /* 有没翻出来的，等一下再试一次（避免死循环，只补一次） */
+      if (!chatPending) {
+        chatPending = true;
+        setTimeout(function () { chatPending = false; maybeTranslateChat(); }, 4000);
+      }
+    }
+  }).catch(function () { chatBusy = false; });
+}
+
+/* React 受控 textarea 必须用原生 setter 才能让框架感知 */
+function setNativeValue(el, value) {
+  try {
+    var proto = Object.getPrototypeOf(el);
+    var desc = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (desc && desc.set) desc.set.call(el, value);
+    else el.value = value;
+  } catch (e) { el.value = value; }
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/*
+ * 发送拦截：输入框主要是中文 → 拦下来，换成英文，**不发送**。
+ * 用户再点一次才真发（此时框里已是英文，识别为英文 → 放行）。
+ */
+function startChatSendIntercept() {
+  document.addEventListener('click', function (ev) {
+    var t = ev.target;
+    if (!t || !t.closest) return;
+    var btn = t.closest('button.sendButton');
+    if (!btn) return;
+
+    /* 翻译中：直接拦住，避免手快点两下把中文发出去 */
+    if (btn.getAttribute('data-vgenzh-busy') === '1') {
+      ev.preventDefault(); ev.stopPropagation();
+      return;
+    }
+
+    var ta = document.querySelector('textarea[data-testid="message-input"]');
+    if (!ta) return;
+    var v = ta.value || '';
+    if (!v.trim()) return;
+    if (!isMostlyChinese(v)) return;      /* 主要是英文 → 原样发 */
+    if (!AI.ready()) return;
+
+    ev.preventDefault(); ev.stopPropagation();
+
+    var ctx = collectChatEntries().slice(-CHAT_CTX).map(function (r) {
+      return { text: (loadChatCache()[r.id] || {}).en || r.text, mine: r.mine };
+    });
+
+    btn.setAttribute('data-vgenzh-busy', '1');
+    btn.style.opacity = '0.45';
+    var hint = btn.getAttribute('title') || '';
+    btn.setAttribute('title', '正在译成英文…');
+
+    AI.zhToEn(v, ctx).then(function (en) {
+      btn.removeAttribute('data-vgenzh-busy');
+      btn.style.opacity = '';
+      btn.setAttribute('title', hint);
+      if (!en) {
+        btn.setAttribute('title', '没译出来，请再点一次或手动改');
+        return;
+      }
+      setNativeValue(ta, en);
+      ta.focus();
+      btn.setAttribute('title', '已译成英文，确认后**再点一次发送**');
+      /* 用一个小的浮标提示，别再点一次就是中文 */
+      showChatHint('已译成英文，确认后再点一次发送');
+    }).catch(function () {
+      btn.removeAttribute('data-vgenzh-busy');
+      btn.style.opacity = '';
+      btn.setAttribute('title', hint);
+    });
+  }, true);
+}
+
+function showChatHint(msg) {
+  try {
+    var old = document.querySelector('.vgenzh-chat-hint');
+    if (old) old.remove();
+    var d = document.createElement('div');
+    d.className = 'vgenzh-chat-hint';
+    d.setAttribute('data-vgenzh-skip', '1');
+    d.textContent = msg;
+    document.body.appendChild(d);
+    setTimeout(function () { if (d.parentNode) d.remove(); }, 3200);
+  } catch (e) { /* 忽略 */ }
+}
+
+var CHAT_CSS =
+  '.vgenzh-msg-en-host{position:relative}' +
+  '.vgenzh-msg-en{position:absolute;right:2px;bottom:-6px;z-index:2;' +
+    'font:10px/1 -apple-system,"Segoe UI",sans-serif;padding:1px 5px;border-radius:4px;' +
+    'border:1px solid rgba(0,0,0,.12);background:rgba(255,255,255,.9);color:#888;' +
+    'cursor:pointer;opacity:.45;transition:opacity .15s}' +
+  '.vgenzh-msg-en:hover{opacity:1}' +
+  '[data-vgenzh-msg-orig]{display:none;margin-top:4px;padding:4px 8px;' +
+    'border-left:2px solid #d8d8d8;color:#777;font-size:12px;line-height:1.5;white-space:pre-wrap}' +
+  '[data-vgenzh-msg-orig][data-open="1"]{display:block}' +
+  '.vgenzh-chat-hint{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:2147483000;' +
+    'background:rgba(30,30,30,.92);color:#fff;font:13px/1.4 -apple-system,"Segoe UI","Microsoft YaHei UI",sans-serif;' +
+    'padding:8px 14px;border-radius:8px;pointer-events:none}';
+
+function ensureChatCss() {
+  if (document.querySelector('style[data-vgenzh-chat-css]')) return;
+  try {
+    if (typeof GM_addStyle === 'function') { GM_addStyle(CHAT_CSS); return; }
+  } catch (e) { /* 兜底 */ }
+  try {
+    var s = document.createElement('style');
+    s.setAttribute('data-vgenzh-chat-css', '1');
+    s.textContent = CHAT_CSS;
+    (document.head || document.documentElement).appendChild(s);
+  } catch (e) { /* 忽略 */ }
+}
+
+/* 聊天页的入口：没有聊天列表时立刻返回 */
+function maybeStartChat() {
+  if (!enabled) return;
+  var ul = document.querySelector('.str-chat__ul');
+  if (!ul) return;
+  ensureChatCss();
+  if (!document.querySelector('button.sendButton')) return;
+  maybeTranslateChat();
 }
 
 /* --------------------------------------------------------- 在线词库 */
@@ -4758,6 +5085,57 @@ var AI = {
     });
   },
 
+  /**
+   * 批量翻译聊天消息（带上下文）。
+   * @param {Array<{id,text}>} entries 要翻的条目
+   * @param {Array<{text,mine}>} context 作为背景的整段对话原文
+   * @returns {Promise<Object>} {id: 中文}
+   */
+  translateChat: function (entries, context) {
+    if (!entries || !entries.length) return Promise.resolve({});
+    var ctx = (context || []).map(function (m) {
+      return (m.mine ? '我: ' : '客户: ') + m.text;
+    }).join('\n');
+    var user = '【对话上下文，按时间顺序，仅供参考】\n' + (ctx || '（无）') +
+               '\n\n【需要翻译的条目】\n' + JSON.stringify(entries);
+    return this.request([
+      { role: 'system', content: AI_CHAT_PROMPT },
+      { role: 'user', content: user }
+    ]).then(function (raw) {
+      var s = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+      var a = s.indexOf('{'), b = s.lastIndexOf('}');
+      if (a < 0 || b < a) return {};
+      var obj;
+      try { obj = JSON.parse(s.slice(a, b + 1)); } catch (e) { return {}; }
+      var out = {};
+      for (var i = 0; i < entries.length; i++) {
+        var id = entries[i].id;
+        var zh = obj[id];
+        if (typeof zh === 'string' && zh.trim() && /[\u3400-\u9FFF]/.test(zh)) out[id] = zh.trim();
+      }
+      return out;
+    });
+  },
+
+  /** 中文 → 英文（带上下文）。返回 Promise<string|null> */
+  zhToEn: function (text, context) {
+    var src = String(text || '');
+    if (!src.trim()) return Promise.resolve(null);
+    var ctx = (context || []).map(function (m) {
+      return (m.mine ? '我: ' : '客户: ') + m.text;
+    }).join('\n');
+    return this.request([
+      { role: 'system', content: AI_ZH2EN_PROMPT },
+      { role: 'user', content: '【对话上下文】\n' + (ctx || '（无）') + '\n\n【我要说的话（中文）】\n' + src }
+    ]).then(function (out) {
+      var en = String(out).trim().replace(/^```[\s\S]*?\n/, '').replace(/```\s*$/, '').trim();
+      en = en.replace(/^["'「『]+/, '').replace(/["'」』]+$/, '').trim();
+      if (!en || !/[A-Za-z]/.test(en)) return null;
+      if (/[\u3400-\u9FFF]/.test(en)) return null;    /* 还带中文 = 没译完 */
+      return en;
+    });
+  },
+
   /** 留给以后的「AI 回复助手」，未实现 */
   draftReply: function () { return Promise.resolve(null); }
 };
@@ -4832,6 +5210,7 @@ function boot() {
    */
   startObserver();
   startRouteWatcher();
+  startChatSendIntercept();      /* 中译英发送拦截，挂一次就够 */
   translate(document.documentElement);
   translateTitle();
 
