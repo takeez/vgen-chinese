@@ -20,7 +20,7 @@ const ROOT = dirname(fileURLToPath(import.meta.url));
 const SRC = join(ROOT, 'src');
 const DIST = join(ROOT, 'dist');
 
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 
 const read = (name) => readFileSync(join(SRC, name), 'utf8');
 
@@ -37,7 +37,9 @@ const DICT_FILES = [
   ['DICT_LONGTEXT2', 'dict-longtext2.js'],
   ['DICT_ROUND3', 'dict-round3.js'],
   ['DICT_ROUND4', 'dict-round4.js'],
-  ['DICT_ROUND5', 'dict-round5.js']
+  ['DICT_ROUND5', 'dict-round5.js'],
+  /* 放最后：placeholder 是属性而不是文本节点，单独一组便于维护 */
+  ['DICT_PLACEHOLDER', 'dict-placeholder.js']
 ];
 
 /* ---------------------------------------------------------- 合并词库 */

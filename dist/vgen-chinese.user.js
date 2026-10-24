@@ -3,7 +3,7 @@
 // @name:zh-CN   VGen 中文化
 // @name:en      VGen Chinese
 // @namespace    https://github.com/takeez/vgen-chinese
-// @version      1.0.2
+// @version      1.0.3
 // @description  把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
 // @description:zh-CN 把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
 // @description:en Translate the vgen.co interface into Simplified Chinese. ~2300 exact-match terms, no AI required.
@@ -35,7 +35,7 @@
 'use strict';
 
 /* 由 build.mjs 自动生成，请改 src/ 下的源文件，不要直接改本文件 */
-var VERSION = "1.0.2";
+var VERSION = "1.0.3";
 
 /* ---------------- normalize.js ---------------- */
 /* ==========================================================================
@@ -260,6 +260,35 @@ var REGEX_RULES = [
     var zh = TERMS[rest];
     if (zh === undefined) zh = TERMS[rest.toLowerCase()];
     return (zh !== undefined ? zh : rest) + ' | VGen';
+  }],
+
+  /* ------------------------------------------------ 带变量的 placeholder */
+  /* 这些是输入框提示里塞了画师名/类型名的，没法精确匹配，只能走模板 */
+  [/^Let\s+(.+?)[’']s curators know any additional allowed usage or restrictions$/i,
+    function (m, who) { return '让 ' + who + ' 的收藏者了解任何额外的使用许可或限制'; }],
+
+  [/^Write something personal to\s+(.+?)\s+about your project~$/i,
+    function (m, who) {
+      var zh = TERMS[who];
+      return '写点关于你这个项目的私信给 ' + (zh !== undefined ? zh : who) + '～';
+    }],
+
+  [/^A short description of who\s+(.+?)\s+is and what they[’']re all about\.$/i,
+    function (m, who) {
+      var zh = TERMS[who];
+      return '简单介绍 ' + (zh !== undefined ? zh : who) + ' 是谁、以及 TA 的一切。';
+    }],
+
+  [/^Note to self about this\s+(.+?)\.\.\.$/i, function (m, what) {
+    var zh = TERMS[what];
+    if (zh === undefined) zh = TERMS[what.toLowerCase()];
+    return '关于这个' + (zh !== undefined ? zh : what) + '的私人备注…';
+  }],
+
+  [/^Select a\s+(.+)$/i, function (m, what) {
+    var zh = TERMS[what];
+    if (zh === undefined) zh = TERMS[what.toLowerCase()];
+    return '选择一个' + (zh !== undefined ? zh : what);
   }]
 ];
 
@@ -1916,7 +1945,7 @@ var SEED_TERMS = {
   "You want to highlight your product photos": "你想突出商品照片",
   "You don't need too big of a spotlight on your photos": "不需要在照片上打太大的聚光灯",
   "Your product details aren't as important as the photos": "商品详情不如照片重要",
-  "Note to self about this gallery piece...": "给这件作品的私人备注…",
+  "Note to self about this gallery piece...": "关于这幅画廊作品的私人备注…",
   "You have dropped the item.": "你已放下该物品。",
   "PayPal Hold won't impact your commission": "PayPal 资金冻结不影响你的委托",
   "This delivery does not include any files": "本次交付不包含任何文件",
@@ -2040,7 +2069,7 @@ var SEED_TERMS = {
   "The bundle will be permanently deleted. This cannot be undone.": "该套餐将被永久删除，此操作无法撤销。",
   "Please avoid using products to accept commissions or donations": "请勿用商品来接受委托或捐赠",
   "Price, licenses, discounts, and bundles are hidden in listing.": "价格、授权、折扣与套餐在列表中隐藏。",
-  "This will be shown to clients before they submit their request": "这会在客户提交请求前展示给他们",
+  "This will be shown to clients before they submit their request": "这段会在客户提交请求前展示给他们",
   "The kind of service that the artist provides for a commission.": "画师为该委托提供的服务类型。",
   "Collab services ARE allowed, but who / what / how must be clear": "允许合作服务，但必须写清是谁／做什么／怎么做",
   "Choose a badge to show off beside your name everywhere on VGen!": "选一个徽章，在 VGen 各处展示在你的名字旁！",
@@ -2309,7 +2338,7 @@ var SEED_TERMS = {
   "New form": "新建表单",
   "New policy": "新建政策",
   "New workflow": "新建工作流",
-  "New Service": "新建服务",
+  "New Service": "新服务",
   "New bundle": "新建套餐",
   "New discount": "新建折扣",
   "Service settings": "服务设置",
@@ -2552,7 +2581,85 @@ var SEED_TERMS = {
   "Selected services": "已选服务",
   "Add a name": "填写名称",
   "Name is required": "名称为必填",
-  "Description is required": "描述为必填"
+  "Description is required": "描述为必填",
+  "Type your message...": "输入消息…",
+  "Be as detailed as you like...": "想写多详细都可以…",
+  "Write a brief description here": "在这里写一段简短描述",
+  "Enter new name": "输入新名称",
+  "Add tags...": "添加标签…",
+  "Add a title to your reference": "给你的参考图加个标题",
+  "Add a Spotify song link": "添加 Spotify 歌曲链接",
+  "Spotify song link": "Spotify 歌曲链接",
+  "Social media link": "社交媒体链接",
+  "Social media link ": "社交媒体链接",
+  "Link": "链接",
+  "X / Instagram / credit URL": "X／Instagram／署名链接",
+  "Name / nickname": "名称／昵称",
+  "Character name": "角色名",
+  "VSONA name": "VSONA 名称",
+  "Section name": "分区名称",
+  "Custom trait": "自定义特征",
+  "Custom license": "自定义授权",
+  "Write tagline": "写标语",
+  "Optional label (phobias, etc)": "可选标签（如恐惧症等）",
+  "Optional label ": "可选标签",
+  "Sister, pet, etc.": "姐姐、宠物等",
+  "Min (e.g. Cold)": "最小（如「冷淡」）",
+  "Max (e.g. Friendly)": "最大（如「友善」）",
+  "e.g. hair color": "例：发色",
+  "e.g., Designer": "例：设计师",
+  "e.g. VTuber outfit design, animated emote": "例：VTuber 服装设计、动态表情",
+  "Ex. Twitch": "例：Twitch",
+  "Ex. Twitter": "例：Twitter",
+  "Ex. writing": "例：写作",
+  "Ex. https://trello.com/": "例：https://trello.com/",
+  "e.g. VAT, GST, HST": "例：增值税、消费税、HST",
+  "e.g. 12345 67890 VG0000": "例：12345 67890 VG0000",
+  "e.g. VGFC OIAN MFIS RBOI": "例：VGFC OIAN MFIS RBOI",
+  "Option name (e.g. Size)": "选项名称（如：尺寸）",
+  "Attribute (e.g. # of emotes)": "属性（如：表情数量）",
+  "Value (e.g. 5)": "值（如：5）",
+  "Address line 1": "地址第一行",
+  "Address line 2": "地址第二行",
+  "Address line 1*": "地址第一行*",
+  "City*": "城市*",
+  "Postal code*": "邮政编码*",
+  "Confirm what's going to be done if anything was unclear from the service description or additional add-ons were requested. If everything is covered by the service description already, you can just send a \"Thank you for your commission!\"": "确认将要完成的内容 —— 如果服务说明里有不清楚的地方，或者客户要求了附加项。如果服务说明已经涵盖了一切，你也可以只发一句「感谢你的委托！」",
+  "What are you offering?": "你提供什么？",
+  "Add a description of the service": "添加服务描述",
+  "The terms you and the client will adhere to": "你和客户都要遵守的条款",
+  "Note to client": "给客户的备注",
+  "Note to self about order...": "关于这笔订单的私人备注…",
+  "Note to self about this commission...": "关于这个委托的私人备注…",
+  "Request template": "请求模板",
+  "Leave a written review (optional)...": "写下评价（可选）…",
+  "Write a public review (optional) ...": "写公开评价（可选）…",
+  "Write a semi-public review (optional) ...": "写半公开评价（可选）…",
+  "Write a private note (optional) ...": "写私人备注（可选）…",
+  "Write a public response here...": "在这里写公开回复…",
+  "Add proof or context... (optional)": "添加凭证或说明…（可选）",
+  "Provide details and evidence here ...": "在这里提供细节和证据…",
+  "How did you incorporate this month's theme into your piece?": "你是如何把本月主题融入作品的？",
+  "My submission": "我的投稿",
+  "Question": "问题",
+  "Answer": "回答",
+  "Choice": "选项",
+  "Long text answer": "长文本回答",
+  "Short text answer": "短文本回答",
+  "New Form": "新表单",
+  "Describe your product here...": "在这里描述你的商品…",
+  "Write any details your customer should to know about how to access, set up, install, or use your product...": "写下客户需要知道的细节：如何获取、配置、安装或使用你的商品…",
+  "Add a small blurb for how amazing it is to purchase your bundle, or anything else you'd like!": "写一段小简介，说说买你的组合包有多棒，或者任何你想说的话！",
+  "Other (additional fees may apply)": "其他（可能产生额外费用）",
+  "New Bundle": "新组合包",
+  "New Showcase": "新作品展示",
+  "New gallery piece": "新画廊作品",
+  "Wishlist": "愿望单",
+  "No response": "无回复",
+  "Franchise": "所属作品",
+  "height": "身高",
+  "Add a backstory, caption, details, or whatever else you'd like to include. Write a little... or a lot... (or leave this completely blank)... up to you!": "可以写背景故事、配文、细节，或任何你想补充的内容。写一点也行…写很多也行…（也可以完全留空）…随你！",
+  "What's changed in this update?": "这次更新改了什么？"
 };
 
 /* ---------------- engine.js ---------------- */
@@ -2927,6 +3034,18 @@ function tryTextNode(node) {
   markTranslated(node.parentElement);
 }
 
+/*
+ * 纯格式示例（网址 / 邮箱 / 掩码 / 编号 / 日期），翻了反而误导，
+ * 也不该占着「待翻清单」的位置。
+ */
+function isFormatHint(s) {
+  if (/https?:\/\/|www\./i.test(s)) return true;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return true;
+  if (!/[a-z]/.test(s)) return true;                 /* 没有小写 = 掩码/编号，如 XX.XX、ABC123、YYYY-MM-DD */
+  if (/^[\d\s.:\/+\-]+$/.test(s)) return true;       /* 纯数字/日期 */
+  return false;
+}
+
 function tryAttrs(el) {
   if (skipAttrs(el)) return;
   for (var i = 0; i < TRANS_ATTRS.length; i++) {
@@ -2940,7 +3059,16 @@ function tryAttrs(el) {
     if (!core) continue;
 
     var out = lookup(core);
-    if (out === undefined || out === core) continue;
+    if (out === undefined) {
+      /*
+       * placeholder 没收录时也要记进「待翻清单」。
+       * 否则这些文案既不会被翻译、又不会出现在导出的未命中清单里 ——
+       * 等于彻底隐身，谁都不会发现它们漏了。
+       */
+      if (!isFormatHint(core)) noteMissed(core, el);
+      continue;
+    }
+    if (out === core) continue;
     el.setAttribute(name, m[1] + out + m[3]);
   }
 }

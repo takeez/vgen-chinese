@@ -369,6 +369,18 @@ function tryTextNode(node) {
   markTranslated(node.parentElement);
 }
 
+/*
+ * 纯格式示例（网址 / 邮箱 / 掩码 / 编号 / 日期），翻了反而误导，
+ * 也不该占着「待翻清单」的位置。
+ */
+function isFormatHint(s) {
+  if (/https?:\/\/|www\./i.test(s)) return true;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)) return true;
+  if (!/[a-z]/.test(s)) return true;                 /* 没有小写 = 掩码/编号，如 XX.XX、ABC123、YYYY-MM-DD */
+  if (/^[\d\s.:\/+\-]+$/.test(s)) return true;       /* 纯数字/日期 */
+  return false;
+}
+
 function tryAttrs(el) {
   if (skipAttrs(el)) return;
   for (var i = 0; i < TRANS_ATTRS.length; i++) {
@@ -382,7 +394,16 @@ function tryAttrs(el) {
     if (!core) continue;
 
     var out = lookup(core);
-    if (out === undefined || out === core) continue;
+    if (out === undefined) {
+      /*
+       * placeholder 没收录时也要记进「待翻清单」。
+       * 否则这些文案既不会被翻译、又不会出现在导出的未命中清单里 ——
+       * 等于彻底隐身，谁都不会发现它们漏了。
+       */
+      if (!isFormatHint(core)) noteMissed(core, el);
+      continue;
+    }
+    if (out === core) continue;
     el.setAttribute(name, m[1] + out + m[3]);
   }
 }

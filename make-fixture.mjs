@@ -165,6 +165,12 @@ ${engine}
 <input placeholder="Username or email">
 <label>Password</label>
 <input type="password" placeholder="Password">
+<!-- placeholder 专项：该翻的要翻，纯格式示例不许碰，未收录的要进待翻清单 -->
+<textarea id="ph-hit" placeholder="Type your message..."></textarea>
+<textarea id="ph-hit2" placeholder="Confirm what's going to be done if anything was unclear from the service description or additional add-ons were requested.&#10;&#10;If everything is covered by the service description already, you can just send a &quot;Thank you for your commission!&quot;"></textarea>
+<input id="ph-format" placeholder="https://">
+<input id="ph-format2" placeholder="YYYY-MM-DD">
+<input id="ph-miss" placeholder="This placeholder is definitely not in the dictionary">
 <button>Continue</button>
 <button>Cancel</button>
 
@@ -313,6 +319,33 @@ ${engine}
         }
         out.push('全局字体覆盖已移除=' + (hasGlobal ? '❌ 还在' : '✅'));
       } catch (e) { out.push('字体范围自检抛错: ' + e.message); }
+
+      /* ⑦ placeholder（属性）专项 */
+      try {
+        var ph = document.getElementById('ph-hit');
+        out.push('placeholder 已翻=' +
+          (ph && ph.getAttribute('placeholder') === '输入消息…' ? '✅' : '❌ ' + JSON.stringify(ph && ph.getAttribute('placeholder'))));
+
+        var ph2 = document.getElementById('ph-hit2');
+        var v2 = ph2 ? ph2.getAttribute('placeholder') : '';
+        out.push('多行 placeholder 已翻=' +
+          (v2 && /[一-龥]/.test(v2) ? '✅' : '❌ ' + JSON.stringify(String(v2).slice(0, 60))));
+
+        var pf = document.getElementById('ph-format');
+        out.push('格式示例未被动=' +
+          (pf && pf.getAttribute('placeholder') === 'https://' ? '✅' : '❌ ' + JSON.stringify(pf && pf.getAttribute('placeholder'))));
+        var pf2 = document.getElementById('ph-format2');
+        out.push('日期掩码未被动=' +
+          (pf2 && pf2.getAttribute('placeholder') === 'YYYY-MM-DD' ? '✅' : '❌ ' + JSON.stringify(pf2 && pf2.getAttribute('placeholder'))));
+
+        /* 未收录的 placeholder 必须进待翻清单，否则永远隐身 */
+        var pm = document.getElementById('ph-miss');
+        var missed = window.VGenZH.missed() || [];
+        var inList = missed.some(function (s) { return s.indexOf('definitely not in the dictionary') >= 0; });
+        out.push('未收录 placeholder 进清单=' + (inList ? '✅' : '❌ 共 ' + missed.length + ' 条'));
+        out.push('格式示例未污染清单=' +
+          (missed.some(function (s) { return s === 'https://' || s === 'YYYY-MM-DD'; }) ? '❌ 被塞进去了' : '✅'));
+      } catch (e) { out.push('placeholder 自检抛错: ' + e.message); }
 
       try {
         window.VGenZH.openDictPanel();

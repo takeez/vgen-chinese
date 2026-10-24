@@ -157,5 +157,34 @@ var REGEX_RULES = [
     var zh = TERMS[rest];
     if (zh === undefined) zh = TERMS[rest.toLowerCase()];
     return (zh !== undefined ? zh : rest) + ' | VGen';
+  }],
+
+  /* ------------------------------------------------ 带变量的 placeholder */
+  /* 这些是输入框提示里塞了画师名/类型名的，没法精确匹配，只能走模板 */
+  [/^Let\s+(.+?)[’']s curators know any additional allowed usage or restrictions$/i,
+    function (m, who) { return '让 ' + who + ' 的收藏者了解任何额外的使用许可或限制'; }],
+
+  [/^Write something personal to\s+(.+?)\s+about your project~$/i,
+    function (m, who) {
+      var zh = TERMS[who];
+      return '写点关于你这个项目的私信给 ' + (zh !== undefined ? zh : who) + '～';
+    }],
+
+  [/^A short description of who\s+(.+?)\s+is and what they[’']re all about\.$/i,
+    function (m, who) {
+      var zh = TERMS[who];
+      return '简单介绍 ' + (zh !== undefined ? zh : who) + ' 是谁、以及 TA 的一切。';
+    }],
+
+  [/^Note to self about this\s+(.+?)\.\.\.$/i, function (m, what) {
+    var zh = TERMS[what];
+    if (zh === undefined) zh = TERMS[what.toLowerCase()];
+    return '关于这个' + (zh !== undefined ? zh : what) + '的私人备注…';
+  }],
+
+  [/^Select a\s+(.+)$/i, function (m, what) {
+    var zh = TERMS[what];
+    if (zh === undefined) zh = TERMS[what.toLowerCase()];
+    return '选择一个' + (zh !== undefined ? zh : what);
   }]
 ];
