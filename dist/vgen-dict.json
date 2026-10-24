@@ -1,6 +1,6 @@
 {
-  "v": "1.0.5",
-  "count": 2402,
+  "v": "1.0.6",
+  "count": 2414,
   "terms": {
     "About us": "关于我们",
     "Explore": "探索",
@@ -2403,6 +2403,18 @@
     "Would you like to add any other contact methods?": "要添加其它联系方式吗？",
     "Do you have a deadline?": "这个项目有截止日期吗？",
     "Are the artist of the piece": "是作品的画师",
-    "Are the recipient of the piece": "是作品的接收方"
+    "Are the recipient of the piece": "是作品的接收方",
+    "Allowed uses": "允许用途",
+    "Report an issue": "报告问题",
+    "Report issue": "报告问题",
+    "Select the uses you need.": "选择你需要的授权。",
+    "Select 1 option": "选择 1 项",
+    "For internal reference only": "仅供内部参考",
+    "Applicable to all services": "适用于所有服务",
+    "From service": "来自服务",
+    "Base price": "基础价格",
+    "Move to waitlist": "移至候补名单",
+    "Edit proposal": "编辑提案",
+    "Tentative": "待定"
   }
 }

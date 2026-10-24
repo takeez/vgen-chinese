@@ -42,9 +42,37 @@ var CONFIG = {
 
 /* 这些标签里的文字一律不碰 */
 var IGNORE_TAGS = {
-  SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, CODE: 1, PRE: 1, TEXTAREA: 1,
-  INPUT: 1, SELECT: 1, OPTION: 1, SVG: 1, CANVAS: 1, IFRAME: 1, MATH: 1
+  SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, CODE: 1, TEXTAREA: 1,
+  INPUT: 1, SELECT: 1, SVG: 1, CANVAS: 1, IFRAME: 1, MATH: 1
+  /*
+   * 注意：PRE 已经被拿掉了。
+   *
+   * 原来把 PRE 和 CODE 一起跳过是为了保护代码块，但 VGen 用
+   * <pre class="detailsText"> 渲染**长文本**（客户填的附加信息、服务描述、
+   * 服务条款正文），跳过 PRE 等于这些内容从头到尾没被看过一眼 ——
+   * 「附加信息一直翻不了」的根因就在这里，跟词库无关。
+   *
+   * 现在改成：PRE 默认可翻，但**里面含 <code> 或 class 像代码高亮的仍然跳过**
+   * （见 isCodeBlock），这样 Prism / highlight.js 那种 <pre><code> 结构仍然安全。
+   */
 };
+
+/* 这个 <pre> 是不是代码块（代码高亮库几乎都包一层 <code>） */
+var CODE_HINT_RE = /(?:^|[\s_-])(?:code|highlight|hljs|prism|shiki|language-|lang-|syntax|linenums)/i;
+
+function isCodeBlock(el) {
+  if (!el) return false;
+  if (el.querySelector && el.querySelector('code')) return true;
+  var cls = (el.className && typeof el.className === 'string') ? el.className : '';
+  if (cls && CODE_HINT_RE.test(cls)) return true;
+  /* 父级是代码高亮容器（有的库把 class 放外层） */
+  var host = el.parentElement;
+  for (var hop = 0; hop < 2 && host; hop++, host = host.parentElement) {
+    var hc = (host.className && typeof host.className === 'string') ? host.className : '';
+    if (hc && CODE_HINT_RE.test(hc)) return true;
+  }
+  return false;
+}
 
 /* 这些区域里的一律不碰（用户名、用户输入框等） */
 var IGNORE_SELECTOR = [
@@ -144,7 +172,10 @@ var IGNORE_TERMS = loadIgnore();
  *   SearchCategorySelectOption   → 分类下拉里被 JS 截断的碎片
  */
 var IGNORE_COLLECT_SELECTOR =
-  '[class*="artistDisplayName"],[class*="MultiLineTextfit"],[class*="SearchCategorySelectOption"]';
+  '[class*="artistDisplayName"],[class*="MultiLineTextfit"],[class*="SearchCategorySelectOption"],' +
+  /* 接稿弹窗里客户填的正文（pre.detailsText）是用户内容，不进「待翻清单」，
+     否则导出清单会被整段客户要求刷屏 */
+  '[data-request-form-screen-item] pre';
 
 /* 最终生效的词库 = 主词库 + 自订词库（自订覆盖同名键） */
 var TERMS = sanitize(Object.assign({}, TERMS_PICK.map, USER_TERMS));
@@ -330,6 +361,9 @@ function skipElement(el) {
     return true;
   }
 
+  /* <pre> 默认可翻，但代码块仍然跳过（见 isCodeBlock 的说明） */
+  if (el.tagName === 'PRE' && isCodeBlock(el)) return true;
+
   if (el.closest && el.closest(IGNORE_SELECTOR)) return true;
   return false;
 }
@@ -465,6 +499,9 @@ function translate(root) {
     var attrEls = root.querySelectorAll('[placeholder],[title],[aria-label],[alt]');
     for (var j = 0; j < attrEls.length; j++) tryAttrs(attrEls[j]);
   }
+
+  /* 接稿弹窗里的自由文本字段：挂「译」按钮。没有弹窗时这一步立即返回 */
+  maybeInjectRequestFields();
 }
 
 /* -------------------------------------------------- 被拆开的文本 */
@@ -979,6 +1016,145 @@ function importIgnoreFromText(text) {
     added++;
   }
   return added;
+}
+
+/* ------------------------------------------- 请求字段一键翻译（AI） */
+
+/*
+ * 客户的「附加信息」这类字段是**自由文本**，词库永远覆盖不了，只能走 AI。
+ *
+ * 结构（从真实页面快照确认，2026-10-24）：
+ *   [role="dialog"] [data-request-form-screen-item]
+ *       p.questionText         ← 字段名「附加信息」
+ *       p.questionDescription  ← 说明「姿势、特征、多角色、附加内容等」
+ *       div.questionContent > pre.detailsText   ← 正文（客户写的内容）
+ *
+ * 定位全靠 VGen 自己的 data-request-form-screen-item 属性，不依赖 hash 类名。
+ *
+ * 交互（用户定的）：
+ *   点「译」→ 正文**直接换成中文**；边上出现「EN」，点一下在下面展开英文原文。
+ *   不弹面板、不加设置、不自动翻译。
+ */
+
+var FIELD_HOST_ATTR = 'data-vgenzh-field';
+var FIELD_BTN_ATTR = 'data-vgenzh-field-btn';
+var FIELD_ORIG_ATTR = 'data-vgenzh-field-orig';
+
+var FIELD_CSS =
+  '[data-vgenzh-field]{position:relative}' +
+  '[data-vgenzh-field-btn]{position:absolute;top:2px;right:2px;z-index:3;' +
+    'font:12px/1 -apple-system,"Segoe UI","Microsoft YaHei UI",sans-serif;' +
+    'padding:3px 8px;border-radius:6px;border:1px solid rgba(0,0,0,.14);' +
+    'background:rgba(255,255,255,.94);color:#333;cursor:pointer;' +
+    'opacity:.5;transition:opacity .15s}' +
+  '[data-vgenzh-field-btn]:hover{opacity:1}' +
+  '[data-vgenzh-field-btn][disabled]{cursor:default;opacity:.35}' +
+  '[data-vgenzh-field-orig]{display:none;margin-top:6px;padding:8px 10px;' +
+    'border-left:3px solid #d8d8d8;background:#fafafa;color:#666;' +
+    'font-size:13px;line-height:1.65;white-space:pre-wrap;word-break:break-word}' +
+  '[data-vgenzh-field-orig][data-open="1"]{display:block}';
+
+function ensureFieldCss() {
+  if (document.querySelector('style[' + FIELD_BTN_ATTR + '-css]')) return;
+  try {
+    if (typeof GM_addStyle === 'function') { GM_addStyle(FIELD_CSS); return; }
+  } catch (e) { /* 兜底 */ }
+  try {
+    var s = document.createElement('style');
+    s.setAttribute(FIELD_BTN_ATTR + '-css', '1');
+    s.textContent = FIELD_CSS;
+    (document.head || document.documentElement).appendChild(s);
+  } catch (e) { /* 忽略 */ }
+}
+
+function injectOneField(pre) {
+  var host = pre.parentElement;
+  if (!host) return;
+  host.setAttribute(FIELD_HOST_ATTR, '1');
+
+  /* 英文原文块：默认隐藏，点「EN」展开。加 skip 免得被引擎再翻一遍 */
+  var orig = document.createElement('div');
+  orig.setAttribute(FIELD_ORIG_ATTR, '1');
+  orig.setAttribute('data-vgenzh-skip', '1');
+
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.setAttribute(FIELD_BTN_ATTR, '1');
+  btn.textContent = '译';
+  btn.title = '用 AI 把这段翻成中文';
+
+  btn.addEventListener('click', function (ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+
+    /* 已经译过：这个按钮此时是「展开 / 收起原文」 */
+    if (btn.getAttribute('data-state') === 'done') {
+      var open = orig.getAttribute('data-open') === '1';
+      orig.setAttribute('data-open', open ? '0' : '1');
+      btn.textContent = open ? 'EN' : '收起';
+      return;
+    }
+    if (btn.disabled) return;
+
+    if (!AI.ready()) {
+      btn.textContent = '先配 API';
+      setTimeout(function () { btn.textContent = '译'; }, 1800);
+      return;
+    }
+
+    var src = (pre.textContent || '').trim();
+    if (!src) return;
+
+    btn.disabled = true;
+    btn.textContent = '译…';
+
+    AI.translateField(src).then(function (zh) {
+      btn.disabled = false;
+      if (!zh) {
+        btn.textContent = '没译出来';
+        setTimeout(function () { btn.textContent = '译'; }, 1800);
+        return;
+      }
+      pre.textContent = zh;
+      markTranslated(pre);          /* 字体修正只作用于我改过的元素 */
+      orig.textContent = src;
+      if (!orig.parentElement) host.appendChild(orig);
+      btn.setAttribute('data-state', 'done');
+      btn.textContent = 'EN';
+      btn.title = '点一下展开英文原文';
+    }).catch(function (e) {
+      btn.disabled = false;
+      btn.textContent = '失败';
+      btn.title = String(e && e.message ? e.message : e);
+      setTimeout(function () { btn.textContent = '译'; }, 2200);
+    });
+  });
+
+  host.appendChild(btn);
+}
+
+/* 扫描接稿弹窗里的长文本字段，给还没处理的挂上「译」按钮。很轻，没有弹窗时立即返回 */
+function maybeInjectRequestFields() {
+  if (!enabled) return;
+  var pres;
+  try {
+    pres = document.querySelectorAll('[role="dialog"] [data-request-form-screen-item] pre');
+  } catch (e) { return; }
+  if (!pres.length) return;
+
+  var todo = [];
+  for (var i = 0; i < pres.length; i++) {
+    var pre = pres[i];
+    if (pre.getAttribute(FIELD_HOST_ATTR)) continue;
+    if (pre.parentElement && pre.parentElement.getAttribute(FIELD_HOST_ATTR)) continue;
+    var t = (pre.textContent || '').trim();
+    if (!t || !HAS_LATIN.test(t)) continue;
+    todo.push(pre);
+  }
+  if (!todo.length) return;
+
+  ensureFieldCss();
+  for (var j = 0; j < todo.length; j++) injectOneField(todo[j]);
 }
 
 /* --------------------------------------------------------- 在线词库 */
@@ -1552,6 +1728,39 @@ function validTranslation(en, zh) {
 }
 
 /*
+ * 长文本校验（客户填的附加信息 / 需求描述）。
+ * 和 validTranslation 的区别：**允许换行、允许长** —— 那段本来就是多行分条的。
+ * 仍然挡掉：和原文一样、不含汉字、模型加前言、离谱地长（说明它在加戏）。
+ */
+function validLongTranslation(en, zh) {
+  if (typeof zh !== 'string') return false;
+  var v = zh.trim();
+  if (!v) return false;
+  if (v === en) return false;
+  if (v.length > String(en).length * 5 + 500) return false;
+  if (!/[\u3400-\u9FFF\uF900-\uFAFF]/.test(v)) return false;
+  if (/^(翻译|译文|中文|translation)\s*[:：]/i.test(v)) return false;
+  return true;
+}
+
+/*
+ * 长文本翻译的提示词。
+ *
+ * 特意**不内置"作品专有名词表"** —— 模型本身认识赛马娘 / 原神 / 明日方舟这些
+ * 角色，直接要求它用中文官方译名，比我们硬编码一张永远不全的表可靠得多。
+ */
+var AI_FIELD_PROMPT = [
+  '你把英文翻译成简体中文，读者是英语不太好的中国画师。',
+  '',
+  '规则：',
+  '1. 逐句对应翻译，**保留原有的换行和分条结构**（客户写了几行就是几行，不要合并成一段）',
+  '2. 人名 / 角色名 / 作品名用中文通译名：如果这些是知名作品（赛马娘、原神、明日方舟等）',
+  '   里的角色，用该作品的中文官方译名，**不要音译**（例如 Gold Ship → 黄金船，不是"金船"）',
+  '3. 不要省略、不要总结、不要加解释、不要加"以下是译文"这类前言',
+  '4. 只输出译文本身'
+].join('\n');
+
+/*
  * 从**现有词库**里挑出跟这批文案相关的术语喂给模型，
  * 这样它会沿用我们已经定下的译法，而不是自己另起一套。
  */
@@ -1681,6 +1890,23 @@ var AI = {
       { role: 'system', content: AI_SYSTEM_PROMPT },
       { role: 'user', content: user }
     ]).then(function (raw) { return parseBatchResult(raw, items); });
+  },
+
+  /**
+   * 长文本翻译：客户填的附加信息 / 需求描述这类自由文本。
+   * 词库永远覆盖不了它们，只能走 AI。返回 Promise<string|null>
+   */
+  translateField: function (text) {
+    var src = String(text || '');
+    if (!src.trim()) return Promise.resolve(null);
+    var self = this;
+    return this.request([
+      { role: 'system', content: AI_FIELD_PROMPT },
+      { role: 'user', content: src }
+    ]).then(function (out) {
+      var zh = String(out).trim().replace(/^```[\s\S]*?\n/, '').replace(/```\s*$/, '').trim();
+      return validLongTranslation(src, zh) ? zh : null;
+    });
   },
 
   /** 留给以后的「AI 回复助手」，未实现 */

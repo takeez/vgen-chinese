@@ -193,6 +193,19 @@ ${engine}
 <button id="btn2"><i class="icon-star"></i> Settings</button>
 <div id="btncheck" class="muted"></div>
 
+<h2>🗂 仿接稿弹窗（结构照抄真实页面快照）</h2>
+<div role="dialog" aria-modal="true" aria-label="Edit check" id="fake-modal">
+  <div data-request-form-screen-item="true" class="LongTextField__Container">
+    <p class="questionText">附加信息</p>
+    <p class="questionDescription">姿势、特征、多角色、附加内容等</p>
+    <div class="questionContent">
+      <pre class="detailsText">5 Separate icons of the references above. Feel free to simplify the outfits if you need to. Agnes Tachyon: Smug, playful Gold Ship Summer: kinda crazy, draw her with a smile.</pre>
+    </div>
+  </div>
+</div>
+<!-- 真代码块：必须有 <code>，引擎要跳过它 -->
+<pre id="real-code"><code>const status = "Draft";</code></pre>
+
 <h2>⚠️ 用户自己写的内容（必须保持英文原样）</h2><div class="userblob">
   <div><strong>Komori_night</strong> <span class="muted">· 2 days ago</span></div>
   <div>hi! i want a full body illustration of my oc, budget around 120 usd, deadline end of march. is that ok?</div>
@@ -389,6 +402,17 @@ ${engine}
           (o2 && o2.textContent === 'Oct 2026' ? '✅' : '❌ ' + JSON.stringify(o2 && o2.textContent)));
       } catch (e) { out.push('option 自检抛错: ' + e.message); }
 
+      /* ⑩ 接稿弹窗字段：按钮注入 + 点译 + 展开原文 + 真代码块要跳过 */
+      try {
+        var fbtn = document.querySelector('#fake-modal [data-vgenzh-field-btn]');
+        out.push('字段挂上译按钮=' + (fbtn ? '✅' : '❌'));
+
+        var codeBtn = document.querySelector('#real-code [data-vgenzh-field-btn]');
+        var codeTxt = document.getElementById('real-code').textContent;
+        out.push('真代码块不挂按钮=' + (codeBtn ? '❌ 挂了' : '✅'));
+        out.push('真代码块文字未被动=' + (codeTxt === 'const status = "Draft";' ? '✅' : '❌ ' + JSON.stringify(codeTxt)));
+      } catch (e) { out.push('字段按钮自检抛错: ' + e.message); }
+
       try {
         window.VGenZH.openDictPanel();
         var p = document.querySelector('.vgenzh-panel');
@@ -433,6 +457,26 @@ ${engine}
           return Z2.updateDict('http://stub.local/dist/vgen-dict.json');
         }).then(function (r) {
           out.push('在线词库=' + (r.ok ? '✅ ' + r.msg : '❌ ' + r.msg));
+          /* 接稿字段：点「译」→ 正文换中文（带换行也要过校验）→ 出现原文块 → 点 EN 展开 */
+          var pre = document.querySelector('#fake-modal pre.detailsText');
+          var btn = document.querySelector('#fake-modal [data-vgenzh-field-btn]');
+          if (!pre || !btn) { out.push('字段按钮缺失=❌'); return null; }
+          btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          return new Promise(function (res) { setTimeout(res, 300); }).then(function () {
+            out.push('点译后正文变中文=' +
+              (/[一-龥]/.test(pre.textContent) ? '✅' : '❌ ' + JSON.stringify(pre.textContent.slice(0, 40))));
+            var orig = document.querySelector('#fake-modal [data-vgenzh-field-orig]');
+            out.push('原文块已生成=' + (orig ? '✅' : '❌'));
+            out.push('原文块默认隐藏=' +
+              (orig && orig.getAttribute('data-open') !== '1' ? '✅' : '❌'));
+            out.push('原文内容正确=' +
+              (orig && orig.textContent.indexOf('5 Separate icons') === 0 ? '✅' : '❌ ' + JSON.stringify(orig && orig.textContent.slice(0, 30))));
+            if (btn && orig) {
+              btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              out.push('点EN后展开=' + (orig.getAttribute('data-open') === '1' ? '✅' : '❌'));
+            }
+            return null;
+          });
         }).catch(function (e) {
           out.push('API 测试抛错: ' + (e && e.message ? e.message : e));
         }).then(function () {

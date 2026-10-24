@@ -218,6 +218,9 @@ var REGEX_RULES = [
     return WEEKDAY_ZH[d.toLowerCase()] || d;
   }],
 
+  /* 「XXX description」——接稿弹窗里服务名的后缀。服务名本身是用户内容，原样保留 */
+  [/^(.{2,120})\s+description$/, '$1 的描述'],
+
   /* 「月份 年份」：Aug 2026 */
   [/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{4})$/i,
     function (m, mon, year) {

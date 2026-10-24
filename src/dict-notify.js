@@ -68,5 +68,24 @@ var DICT_NOTIFY = {
 
   /* ---- 屏幕阅读器用的（VGen 有 aria 文案，顺手翻） ---- */
   'Are the artist of the piece': '是作品的画师',
-  'Are the recipient of the piece': '是作品的接收方'
+  'Are the recipient of the piece': '是作品的接收方',
+
+  /* ---- 接稿弹窗里的表单标签（对照真实页面快照补的） ---- */
+  'Allowed uses': '允许用途',
+  'Report an issue': '报告问题',
+  'Report issue': '报告问题',
+  'Select the uses you need.': '选择你需要的授权。',
+  'Select 1 option': '选择 1 项',
+  'For internal reference only': '仅供内部参考',
+  'Applicable to all services': '适用于所有服务',
+  'From service': '来自服务',
+  'Project subtotal': '项目小计',
+  'Base price': '基础价格',
+  'Move to waitlist': '移至候补名单',
+  'Edit proposal': '编辑提案',
+  'Prioritize': '优先处理',
+  'Pause': '暂停',
+  'Decline': '拒绝',
+  'New': '新品',
+  'Tentative': '待定'
 };
