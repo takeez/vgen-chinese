@@ -316,7 +316,20 @@ function forgetMissed(text) {
 
 function skipElement(el) {
   if (!el || el.nodeType !== 1) return false;
-  if (IGNORE_TAGS[el.tagName]) return true;
+
+  /*
+   * <option> 是特例：它的文本是用户看得见的下拉项文案（比如「预计开始」里的
+   * "Oct 2026"），本来就该翻；但**如果没有 value 属性，表单提交的值就是这段
+   * 文本本身**，一翻就把要提交的数据改掉了。
+   * 所以只翻「有显式 value」的 option —— value 是独立的，改文本不影响提交。
+   * <select> 自身不带文字，不用特殊处理（它的子 option 会被单独判定）。
+   */
+  if (el.tagName === 'OPTION') {
+    if (!el.hasAttribute('value')) return true;
+  } else if (IGNORE_TAGS[el.tagName]) {
+    return true;
+  }
+
   if (el.closest && el.closest(IGNORE_SELECTOR)) return true;
   return false;
 }

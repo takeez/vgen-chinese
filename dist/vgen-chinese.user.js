@@ -3,7 +3,7 @@
 // @name:zh-CN   VGen 中文化
 // @name:en      VGen Chinese
 // @namespace    https://github.com/takeez/vgen-chinese
-// @version      1.0.4
+// @version      1.0.5
 // @description  把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
 // @description:zh-CN 把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
 // @description:en Translate the vgen.co interface into Simplified Chinese. ~2300 exact-match terms, no AI required.
@@ -35,7 +35,7 @@
 'use strict';
 
 /* 由 build.mjs 自动生成，请改 src/ 下的源文件，不要直接改本文件 */
-var VERSION = "1.0.4";
+var VERSION = "1.0.5";
 
 /* ---------------- normalize.js ---------------- */
 /* ==========================================================================
@@ -2033,7 +2033,7 @@ var SEED_TERMS = {
   "This site is protected by reCAPTCHA and the Google": "本站受 reCAPTCHA 保护，适用 Google 的",
   "If you're still having trouble, get help": "如果仍然有问题，获取帮助",
   "Your session has expired. Please reload the page.": "你的会话已过期，请刷新页面。",
-  "Please try reloading the page and emptying your cache.": "请尝试刷新页面并清空缓存。",
+  "Please try reloading the page and emptying your cache.": "请尝试刷新页面并清除缓存。",
   "Error connecting to chat, refresh the page to try again.": "连接聊天失败，刷新页面重试。",
   "This message did not meet our content guidelines": "这条消息不符合我们的内容准则",
   "Reached the vote limit. Remove an existing vote first.": "已达投票上限，请先移除一个已有投票。",
@@ -2091,8 +2091,8 @@ var SEED_TERMS = {
   "so please sign up or log in to continue!": "请注册或登录以继续！",
   "Please sign in or create a VGen account to continue with your purchase.": "请登录或创建 VGen 账户以继续购买。",
   "I have a valid, government-issued photo ID": "我持有有效的政府签发带照片证件",
-  "Are you sure you want to remove this item?": "确定要移除这项吗？",
-  "Are you sure you want to remove this discount?": "确定要移除此折扣吗？",
+  "Are you sure you want to remove this item?": "确定要删除这一项吗？",
+  "Are you sure you want to remove this discount?": "确定要删除这个折扣吗？",
   "Are you sure you want to update the status of": "确定要更新以下状态吗：",
   "You are the client of the Verified showcase": "你是该认证作品集的客户",
   "You'll be notified when they mark it as WIP": "对方标记为「进行中」时会通知你",
@@ -2117,7 +2117,7 @@ var SEED_TERMS = {
   "used to create a verified portfolio showcase.": "用于创建认证作品集展示。",
   "This will permanently delete this relationship.": "这将永久删除该关系。",
   "Create bundles to feature them on your profile!": "创建套餐，在主页上展示它们！",
-  "Please select an option for each discovery tag.": "请为每个发现标签选择一个选项。",
+  "Please select an option for each discovery tag.": "每个发现标签都要选一项。",
   "Have a problem with your commission or purchase?": "你的委托或购买遇到问题？",
   "Standard VGen and Payment Processing fees apply.": "将收取标准 VGen 与支付处理费。",
   "You must provide a new guaranteed delivery date.": "你必须提供新的保证交付日期。",
@@ -2440,7 +2440,7 @@ var SEED_TERMS = {
   "Max 8MB each. JPG, PNG, GIF, WEBP, MP3, WAV, FLAC, OGG, OPUS or YouTube links (public or unlisted). First 6 media displayed in preview. First 20 media displayed in service.": "单个最大 8MB。支持 JPG、PNG、GIF、WEBP、MP3、WAV、FLAC、OGG、OPUS 或 YouTube 链接（公开或不公开）。预览显示前 6 个素材，服务页显示前 20 个。",
   "Please remove any \"payments must be in X currency\"": "请移除任何「付款必须使用 X 货币」的表述",
   "Please send me your character reference sheets and briefly describe your ideas (e.g., canvas size, static or animated, background requirements).": "请把你的角色设定图发给我，并简要描述你的想法（例如画布尺寸、静态或动态、背景要求）。",
-  "Please specify a currency.": "请指定一种货币。",
+  "Please specify a currency.": "请指定币种。",
   "Request Form": "需求表单",
   "Requesting process": "请求流程",
   "Scope": "范围",
@@ -2779,7 +2779,43 @@ var SEED_TERMS = {
   "Franchise": "所属作品",
   "height": "身高",
   "Add a backstory, caption, details, or whatever else you'd like to include. Write a little... or a lot... (or leave this completely blank)... up to you!": "可以写背景故事、配文、细节，或任何你想补充的内容。写一点也行…写很多也行…（也可以完全留空）…随你！",
-  "What's changed in this update?": "这次更新改了什么？"
+  "What's changed in this update?": "这次更新改了什么？",
+  "– will you accept?": "—— 要接受吗？",
+  "— will you accept?": "—— 要接受吗？",
+  "- will you accept?": "—— 要接受吗？",
+  "will you accept?": "要接受吗？",
+  "Decline commission": "拒绝委托",
+  "Decline commission?": "拒绝这个委托？",
+  "Decline commissions?": "拒绝这些委托？",
+  "Accept": "接受",
+  "Declined": "已拒绝",
+  "Pay to accept": "付款后接受",
+  "Not accepting requests": "暂不接受请求",
+  "Starts accepting requests": "开始接受请求",
+  "Requested milestones have been auto-accepted": "请求的里程碑已自动接受",
+  "edited their reply": "编辑了回复",
+  "submitted an inquiry": "提交了咨询",
+  "sent you a message": "给你发了消息",
+  "left a review": "留下了评价",
+  "Requested by client": "客户申请",
+  "Accept terms to start request": "接受条款以开始请求",
+  "Accept terms to start inquiry": "接受条款以开始咨询",
+  "Accept terms to join waitlist": "接受条款以加入等候名单",
+  "Please accept when you feel comfortable doing so.": "你方便的时候接受即可。",
+  "Please note": "请注意",
+  "Your accepted Terms of Service have not changed.": "你已接受的《服务条款》没有变化。",
+  "Do you approve?": "你同意吗？",
+  "Are you sure you want to publish?": "确定要发布吗？",
+  "Are you sure you want to mark as WIP?": "确定要标记为「进行中」吗？",
+  "Are you sure you want to update an active discount?": "确定要修改进行中的折扣吗？",
+  "Please choose a discount value.": "请选择折扣额度。",
+  "Please enter a valid VSONA": "请输入有效的 VSONA",
+  "Please enter an email address first.": "请先填写邮箱地址。",
+  "Please confirm that this product has no deliverables.": "请确认这个商品没有交付物。",
+  "Would you like to add any other contact methods?": "要添加其它联系方式吗？",
+  "Do you have a deadline?": "这个项目有截止日期吗？",
+  "Are the artist of the piece": "是作品的画师",
+  "Are the recipient of the piece": "是作品的接收方"
 };
 
 /* ---------------- engine.js ---------------- */
@@ -3101,7 +3137,20 @@ function forgetMissed(text) {
 
 function skipElement(el) {
   if (!el || el.nodeType !== 1) return false;
-  if (IGNORE_TAGS[el.tagName]) return true;
+
+  /*
+   * <option> 是特例：它的文本是用户看得见的下拉项文案（比如「预计开始」里的
+   * "Oct 2026"），本来就该翻；但**如果没有 value 属性，表单提交的值就是这段
+   * 文本本身**，一翻就把要提交的数据改掉了。
+   * 所以只翻「有显式 value」的 option —— value 是独立的，改文本不影响提交。
+   * <select> 自身不带文字，不用特殊处理（它的子 option 会被单独判定）。
+   */
+  if (el.tagName === 'OPTION') {
+    if (!el.hasAttribute('value')) return true;
+  } else if (IGNORE_TAGS[el.tagName]) {
+    return true;
+  }
+
   if (el.closest && el.closest(IGNORE_SELECTOR)) return true;
   return false;
 }

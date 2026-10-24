@@ -171,6 +171,14 @@ ${engine}
 <input id="ph-format" placeholder="https://">
 <input id="ph-format2" placeholder="YYYY-MM-DD">
 <input id="ph-miss" placeholder="This placeholder is definitely not in the dictionary">
+<!-- option 专项：有 value 的要翻（value 不许动），没有 value 的整条不许碰 -->
+<select id="sel-valued">
+  <option value="2026-10">Oct 2026</option>
+  <option value="2026-11">Nov 2026</option>
+</select>
+<select id="sel-novalue">
+  <option>Oct 2026</option>
+</select>
 <button>Continue</button>
 <button>Cancel</button>
 
@@ -366,6 +374,20 @@ ${engine}
         out.push('动态文案(日期/页码)=' +
           (badDyn.length ? '❌ ' + badDyn.join(' | ') : '✅ ' + dyn.length + ' 条'));
       } catch (e) { out.push('动态文案自检抛错: ' + e.message); }
+
+      /* ⑨ <option> 专项：有 value 的翻文本、value 不变；没 value 的不许碰 */
+      try {
+        var sv = document.getElementById('sel-valued');
+        var o1 = sv ? sv.options[0] : null;
+        out.push('有value的option已翻=' +
+          (o1 && o1.textContent === '2026年10月' ? '✅' : '❌ ' + JSON.stringify(o1 && o1.textContent)));
+        out.push('option的value未改动=' +
+          (o1 && o1.value === '2026-10' ? '✅' : '❌ ' + JSON.stringify(o1 && o1.value)));
+        var sn = document.getElementById('sel-novalue');
+        var o2 = sn ? sn.options[0] : null;
+        out.push('无value的option未被动=' +
+          (o2 && o2.textContent === 'Oct 2026' ? '✅' : '❌ ' + JSON.stringify(o2 && o2.textContent)));
+      } catch (e) { out.push('option 自检抛错: ' + e.message); }
 
       try {
         window.VGenZH.openDictPanel();
