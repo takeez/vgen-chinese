@@ -579,7 +579,21 @@ ${engine}
             return new Promise(function (res2) { setTimeout(res2, 200); }).then(function () {
               out.push('英文原样放行=' +
                 (ta.value === 'Sounds good, thanks for checking in!' ? '✅' : '❌ ' + JSON.stringify(ta.value)));
-              return null;
+
+              /* 关键：Stream Chat 是按 Enter 发送的，回车也必须拦 */
+              ta.value = '明天发你';
+              ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+              return new Promise(function (res3) { setTimeout(res3, 400); }).then(function () {
+                out.push('回车也被拦=' +
+                  (ta.value === 'Sounds good, thanks for checking in!' ? '✅' : '❌ ' + JSON.stringify(ta.value)));
+                /* 现在框里是英文，再按回车应该放行 */
+                ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+                return new Promise(function (res4) { setTimeout(res4, 150); }).then(function () {
+                  out.push('回车放行英文=' +
+                    (ta.value === 'Sounds good, thanks for checking in!' ? '✅' : '❌'));
+                  return null;
+                });
+              });
             });
           });
         }).then(function () {

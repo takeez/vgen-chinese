@@ -1451,58 +1451,74 @@ function setNativeValue(el, value) {
 }
 
 /*
- * 发送拦截：输入框主要是中文 → 拦下来，换成英文，**不发送**。
- * 用户再点一次才真发（此时框里已是英文，识别为英文 → 放行）。
+ * 发送拦截：输入框里主要是中文 → 拦下来，换成英文，**不发送**。
+ * 用户再按一次才真发（此时框里已是英文，识别为英文 → 放行）。
+ *
+ * 两条路都要拦：
+ *   · 点发送按钮（click）
+ *   · 直接按 Enter —— Stream Chat 的输入框是按 Enter 发的。只拦按钮的话，
+ *     绝大多数人按回车就把中文发出去了（这个漏过一次，被用户抓到）
+ *
+ * 中文输入法选词时回车会带 isComposing，那种要放过去，否则打不出字。
  */
 function startChatSendIntercept() {
+  var translating = false;
+
+  function grabContext() {
+    var cache = loadChatCache();
+    return collectChatEntries().slice(-CHAT_CTX).map(function (r) {
+      return { text: (cache[r.id] || {}).en || r.text, mine: r.mine };
+    });
+  }
+
+  function translateThenFill(ta, zh) {
+    if (translating) return;
+    translating = true;
+    AI.zhToEn(zh, grabContext()).then(function (en) {
+      translating = false;
+      if (!en) return;
+      setNativeValue(ta, en);
+      ta.focus();
+      /* 记住「英文 => 我原本写的中文」，等这条发出后直接用中文原文显示 */
+      try { sentZh[en.trim()] = zh; } catch (e2) { /* 忽略 */ }
+      /* 不弹任何提示 —— 输入框变成英文本身就说明没发出去（用户明确要求） */
+    }).catch(function () { translating = false; });
+  }
+
+  /* 判断该不该拦：中文为主 + 有 key + 没在翻译中 */
+  function shouldGrab(text) {
+    return !!text && !!text.trim() && isMostlyChinese(text) && AI.ready();
+  }
+
+  /* ① 点发送按钮 */
   document.addEventListener('click', function (ev) {
     var t = ev.target;
     if (!t || !t.closest) return;
-    var btn = t.closest('button.sendButton');
-    if (!btn) return;
-
-    /* 翻译中：直接拦住，避免手快点两下把中文发出去 */
-    if (btn.getAttribute('data-vgenzh-busy') === '1') {
-      ev.preventDefault(); ev.stopPropagation();
-      return;
-    }
+    if (!t.closest('button.sendButton')) return;
+    if (translating) { ev.preventDefault(); ev.stopPropagation(); return; }
 
     var ta = document.querySelector('textarea[data-testid="message-input"]');
     if (!ta) return;
     var v = ta.value || '';
-    if (!v.trim()) return;
-    if (!isMostlyChinese(v)) return;      /* 主要是英文 → 原样发 */
-    if (!AI.ready()) return;
+    if (!shouldGrab(v)) return;
 
     ev.preventDefault(); ev.stopPropagation();
+    translateThenFill(ta, v);
+  }, true);
 
-    var ctx = collectChatEntries().slice(-CHAT_CTX).map(function (r) {
-      return { text: (loadChatCache()[r.id] || {}).en || r.text, mine: r.mine };
-    });
+  /* ② 直接按 Enter */
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter' || ev.shiftKey) return;
+    if (ev.isComposing || ev.keyCode === 229) return;   /* 输入法选词 */
+    var ta = ev.target;
+    if (!ta || ta.tagName !== 'TEXTAREA') return;
+    if (translating) { ev.preventDefault(); ev.stopPropagation(); return; }
 
-    btn.setAttribute('data-vgenzh-busy', '1');
-    btn.style.opacity = '0.45';
-    var hint = btn.getAttribute('title') || '';
-    btn.setAttribute('title', '正在译成英文…');
+    var v = ta.value || '';
+    if (!shouldGrab(v)) return;
 
-    AI.zhToEn(v, ctx).then(function (en) {
-      btn.removeAttribute('data-vgenzh-busy');
-      btn.style.opacity = '';
-      btn.setAttribute('title', hint);
-      if (!en) {
-        btn.setAttribute('title', '没译出来，请再点一次或手动改');
-        return;
-      }
-      setNativeValue(ta, en);
-      ta.focus();
-      /* 记住「英文 => 我原本写的中文」，等这条发出后直接用中文原文显示 */
-      try { sentZh[en.trim()] = v; } catch (e2) { /* 忽略 */ }
-      /* 不弹任何提示 —— 输入框里变成英文本身就说明没发出去（用户明确要求） */
-    }).catch(function () {
-      btn.removeAttribute('data-vgenzh-busy');
-      btn.style.opacity = '';
-      btn.setAttribute('title', hint);
-    });
+    ev.preventDefault(); ev.stopPropagation();
+    translateThenFill(ta, v);
   }, true);
 }
 
