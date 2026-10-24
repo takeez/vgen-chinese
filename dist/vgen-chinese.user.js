@@ -2882,7 +2882,8 @@ var CONFIG = {
     aiEndpoint: 'vgenzh_ai_endpoint',
     aiKey: 'vgenzh_ai_key',
     aiModel: 'vgenzh_ai_model',
-    chatCache: 'vgenzh_chat_cache'
+    chatCache: 'vgenzh_chat_cache',
+    discuss: 'vgenzh_discuss'
   }
 };
 
@@ -3348,6 +3349,8 @@ function translate(root) {
 
   /* 接稿弹窗里的自由文本字段：挂「译」按钮。没有弹窗时这一步立即返回 */
   maybeInjectRequestFields();
+  /* 提案标题旁挂「讨论这单」入口 */
+  maybeInjectProposeButton();
 
   /* 聊天页：自动翻消息（没有聊天列表时立即返回） */
   maybeStartChat();
@@ -4353,6 +4356,310 @@ function maybeStartChat() {
   maybeTranslateChat();
 }
 
+/* ------------------------------------------------- 讨论窗口（提案 + 报价） */
+
+/*
+ * 背景资料**不另外维护**：接稿弹窗里已经有全部内容 —— 服务名、价格、
+ * 授权档位、参考文件、截止日、客户附加信息、快速计算、服务描述、服务条款。
+ * 所以直接读整个弹窗的可见文字当上下文，模型自己分辨。
+ * 好处：VGen 改 DOM 也不会立刻失效；坏处：每次讨论多花几千 token（约 1 分钱）。
+ *
+ * 锚点（真实快照）：
+ *   提案标题  [role=dialog] .inputGroupHeader h4.inputGroupTitle（文字为「提案」）
+ *   范围输入  [role=dialog] .proposalContainer .scope textarea
+ *   委托编号  弹窗文字里的 COMM#XXXX
+ */
+
+var DISCUSS_CTX_MAX = 9000;    /* 弹窗文字最多带多少字符 */
+
+var AI_DISCUSS_PROMPT = [
+  '你是一个在中国画师和英文客户之间做中介的助手。画师英语不太好，你帮他理清这一单该怎么写、怎么报价。',
+  '',
+  '给你的资料是 VGen 接稿弹窗里的全部内容：服务信息、客户选择的授权、参考文件、',
+  '截止日、客户填的附加信息、快速计算，以及画师自己的服务描述和服务条款。',
+  '',
+  '工作方式：',
+  '1. 用**简体中文**和画师对话，像一个懂行的朋友那样说话，别打官腔',
+  '2. 主动指出资料里的矛盾、遗漏、风险（例如：客户说的数量和列出的数量对不上；',
+  '   他只买了个人授权但需求看起来像商用；截止日和你的交付周期冲突；条款里写明的',
+  '   修改轮数要不要在提案里点一句）',
+  '3. 报价只给**区间 + 依据 + 不确定项**，不要给一个斩钉截铁的数字 —— 最终数字画师自己填',
+  '4. 不确定的事就问画师，不要自己编客户的意图',
+  '5. 回答简短，一次说清一件事；不要一次丢一大段'
+].join('\n');
+
+var AI_SCOPE_PROMPT = [
+  '你在帮一个中国画师写 VGen 提案里的「范围」（Scope）字段，客户会直接读到这段英文。',
+  '',
+  '要求：',
+  '1. 英文要自然、礼貌、简洁，像母语者写的，不要中式英语',
+  '2. 只写"确认范围"该说的话：这单会做什么、有哪些附加项、修改/交付/授权的关键约定',
+  '3. 把对话里已经谈定的内容都体现出来，**不要承诺没谈过的东西**',
+  '4. 不要写价格（价格在表单别处填）',
+  '5. 长度控制在 60-160 个英文单词',
+  '6. **只返回 JSON**：{"en": "<英文>", "zh": "<对应的中文，给画师核对用>"}'
+].join('\n');
+
+var discussState = null;   /* { key, messages: [{role,content}] } */
+
+/* 当前弹窗的委托编号（COMM#XXXX），用作讨论记录的键 */
+function getCommissionKey() {
+  try {
+    var dlg = document.querySelector('[role="dialog"]');
+    if (!dlg) return '';
+    var m = (dlg.textContent || '').match(/COMM#[A-Z0-9]{6,}/);
+    return m ? m[0] : '';
+  } catch (e) { return ''; }
+}
+
+/* 把整个弹窗的可见文字压成一段，当讨论的背景资料 */
+function collectModalContext() {
+  var dlg = document.querySelector('[role="dialog"]');
+  if (!dlg) return '';
+  var clone;
+  try { clone = dlg.cloneNode(true); } catch (e) { return ''; }
+  /* 去掉脚本、svg、我们自己的按钮和原文块 */
+  var junk = clone.querySelectorAll('script,style,svg,' +
+    '[data-vgenzh-field-btn],[data-vgenzh-field-orig],[data-vgenzh-skip]');
+  for (var i = 0; i < junk.length; i++) junk[i].remove();
+  var t = (clone.innerText || clone.textContent || '')
+    .split('\n').map(function (s) { return s.trim(); })
+    .filter(function (s) { return s; })
+    .join('\n');
+  if (t.length > DISCUSS_CTX_MAX) t = t.slice(0, DISCUSS_CTX_MAX) + '\n…（后面还很长，已截断）';
+  return t;
+}
+
+function loadDiscuss(key) {
+  if (discussState && discussState.key === key) return discussState;
+  var saved = {};
+  try { saved = GM_getValue(CONFIG.KEY.discuss, {}) || {}; } catch (e) { saved = {}; }
+  var msgs = (key && saved[key]) ? saved[key] : [];
+  discussState = { key: key || '', messages: Array.isArray(msgs) ? msgs : [] };
+  return discussState;
+}
+
+function saveDiscuss() {
+  if (!discussState || !discussState.key) return;
+  try {
+    var saved = GM_getValue(CONFIG.KEY.discuss, {}) || {};
+    saved[discussState.key] = discussState.messages.slice(-40);
+    /* 只留最近 8 单，免得存储越滚越大 */
+    var keys = Object.keys(saved);
+    if (keys.length > 8) { for (var i = 0; i < keys.length - 8; i++) delete saved[keys[i]]; }
+    GM_setValue(CONFIG.KEY.discuss, saved);
+  } catch (e) { /* 忽略 */ }
+}
+
+var DISCUSS_CSS =
+  '.vgenzh-dlg-mask{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.38);' +
+    'display:flex;align-items:center;justify-content:center}' +
+  '.vgenzh-dlg{width:min(760px,94vw);max-height:86vh;display:flex;flex-direction:column;' +
+    'background:#fff;border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.28);overflow:hidden;' +
+    'font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei UI",sans-serif;color:#222}' +
+  '.vgenzh-dlg-hd{display:flex;align-items:center;justify-content:space-between;' +
+    'padding:12px 16px;border-bottom:1px solid #eee;font-weight:600}' +
+  '.vgenzh-dlg-hd button{border:0;background:transparent;font-size:18px;cursor:pointer;color:#888;padding:0 4px}' +
+  '.vgenzh-dlg-ctx{padding:10px 16px;background:#fafafa;border-bottom:1px solid #eee;' +
+    'font-size:12px;color:#666;max-height:96px;overflow:auto;white-space:pre-wrap}' +
+  '.vgenzh-dlg-body{flex:1;overflow:auto;padding:12px 16px}' +
+  '.vgenzh-dlg-msg{margin:0 0 10px;padding:8px 12px;border-radius:10px;white-space:pre-wrap;word-break:break-word}' +
+  '.vgenzh-dlg-msg[data-who="me"]{background:#efe8ff;margin-left:56px}' +
+  '.vgenzh-dlg-msg[data-who="ai"]{background:#f4f4f5;margin-right:56px}' +
+  '.vgenzh-dlg-ftb{border-top:1px solid #eee;padding:10px 16px;background:#fff}' +
+  '.vgenzh-dlg-ftb textarea{width:100%;box-sizing:border-box;height:64px;resize:vertical;' +
+    'padding:8px 10px;border:1px solid #ddd;border-radius:8px;font:inherit}' +
+  '.vgenzh-dlg-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}' +
+  '.vgenzh-dlg-row button{padding:6px 12px;border-radius:8px;border:1px solid #ddd;' +
+    'background:#fff;cursor:pointer;font:inherit;color:#333}' +
+  '.vgenzh-dlg-row button.primary{background:#6c47ff;border-color:#6c47ff;color:#fff}' +
+  '.vgenzh-dlg-row button:disabled{opacity:.45;cursor:default}' +
+  '.vgenzh-dlg-out{padding:10px 16px;border-top:1px solid #eee;background:#fbfaf6;display:none}' +
+  '.vgenzh-dlg-out[data-open="1"]{display:block}' +
+  '.vgenzh-dlg-out textarea{width:100%;box-sizing:border-box;height:110px;resize:vertical;' +
+    'padding:8px 10px;border:1px solid #ddd;border-radius:8px;font:inherit}' +
+  '.vgenzh-dlg-out .zh{margin-top:6px;font-size:12px;color:#666;white-space:pre-wrap}' +
+  '.vgenzh-propose-btn{border:0;background:transparent;color:#6c47ff;cursor:pointer;' +
+    'font:inherit;font-size:12px;padding:0 0 0 8px;opacity:.85}' +
+  '.vgenzh-propose-btn:hover{opacity:1}';
+
+function ensureDiscussCss() {
+  if (document.querySelector('style[data-vgenzh-dlg-css]')) return;
+  try { if (typeof GM_addStyle === 'function') { GM_addStyle(DISCUSS_CSS); return; } } catch (e) { /* 兜底 */ }
+  var s = document.createElement('style');
+  s.setAttribute('data-vgenzh-dlg-css', '1');
+  s.textContent = DISCUSS_CSS;
+  (document.head || document.documentElement).appendChild(s);
+}
+
+/* 注：建元素用下面面板里那个 el()，函数声明会提升，顺序无所谓 */
+
+function openDiscussDialog() {
+  ensureDiscussCss();
+  var old = document.querySelector('.vgenzh-dlg-mask');
+  if (old) old.remove();
+
+  var key = getCommissionKey();
+  var st = loadDiscuss(key);
+  var ctx = collectModalContext();
+
+  var mask = el('div', 'vgenzh-dlg-mask');
+  mask.setAttribute('data-vgenzh-skip', '1');
+  var dlg = el('div', 'vgenzh-dlg');
+  mask.appendChild(dlg);
+
+  /* 头部 */
+  var hd = el('div', 'vgenzh-dlg-hd');
+  hd.appendChild(el('span', null, '💬 讨论这单' + (key ? '　' + key : '')));
+  var closeBtn = el('button', null, '✕');
+  hd.appendChild(closeBtn);
+  dlg.appendChild(hd);
+
+  /* 背景摘要（可折叠显示前几行） */
+  var ctxBox = el('div', 'vgenzh-dlg-ctx');
+  ctxBox.textContent = '📋 我已读到的资料（' + ctx.length + ' 字）\n' +
+    ctx.split('\n').slice(0, 6).join('\n') + (ctx.length > 200 ? '\n…' : '');
+  dlg.appendChild(ctxBox);
+
+  /* 对话区 */
+  var body = el('div', 'vgenzh-dlg-body');
+  dlg.appendChild(body);
+
+  function renderMsg(who, text) {
+    var d = el('div', 'vgenzh-dlg-msg', text);
+    d.setAttribute('data-who', who);
+    body.appendChild(d);
+    body.scrollTop = body.scrollHeight;
+  }
+  for (var i = 0; i < st.messages.length; i++) {
+    renderMsg(st.messages[i].role === 'user' ? 'me' : 'ai', st.messages[i].content);
+  }
+  if (!st.messages.length) {
+    renderMsg('ai', '资料我读到了。你想先聊哪块？比如：\n' +
+      '· 这单有没有哪里要先跟客户确认\n' +
+      '· 该怎么报价\n' +
+      '· 提案的「范围」怎么写');
+  }
+
+  /* 输入区 */
+  var ft = el('div', 'vgenzh-dlg-ftb');
+  var ta = el('textarea');
+  ta.placeholder = '用中文说就行，比如「这单我该怎么报价」';
+  ft.appendChild(ta);
+
+  var row = el('div', 'vgenzh-dlg-row');
+  var sendBtn = el('button', 'primary', '发送');
+  var scopeBtn = el('button', null, '生成范围文本');
+  var priceBtn = el('button', null, '帮我估价');
+  row.appendChild(sendBtn);
+  row.appendChild(scopeBtn);
+  row.appendChild(priceBtn);
+  ft.appendChild(row);
+  dlg.appendChild(ft);
+
+  /* 输出区（填范围用） */
+  var out = el('div', 'vgenzh-dlg-out');
+  var outEn = el('textarea');
+  var outZh = el('div', 'zh');
+  out.appendChild(el('div', null, '建议填入「范围」的英文（可以直接改）：'));
+  out.appendChild(outEn);
+  out.appendChild(outZh);
+  var outRow = el('div', 'vgenzh-dlg-row');
+  var fillBtn = el('button', 'primary', '填入范围');
+  outRow.appendChild(fillBtn);
+  out.appendChild(outRow);
+  dlg.appendChild(out);
+
+  closeBtn.addEventListener('click', function () { mask.remove(); });
+  mask.addEventListener('click', function (ev) { if (ev.target === mask) mask.remove(); });
+
+  function setBusy(on) {
+    sendBtn.disabled = on; scopeBtn.disabled = on; priceBtn.disabled = on;
+    sendBtn.textContent = on ? '…' : '发送';
+  }
+
+  function push(who, text) {
+    st.messages.push({ role: who === 'me' ? 'user' : 'assistant', content: text });
+    renderMsg(who, text);
+    saveDiscuss();
+  }
+
+  function ask(text) {
+    push('me', text);
+    setBusy(true);
+    AI.discuss(st.messages, ctx).then(function (ans) {
+      setBusy(false);
+      if (!ans) { renderMsg('ai', '（没拿到回复，再试一次）'); return; }
+      push('ai', ans);
+    }).catch(function (e) {
+      setBusy(false);
+      renderMsg('ai', '出错了：' + (e && e.message ? e.message : e));
+    });
+  }
+
+  sendBtn.addEventListener('click', function () {
+    var v = (ta.value || '').trim();
+    if (!v || !AI.ready()) return;
+    ta.value = '';
+    ask(v);
+  });
+
+  priceBtn.addEventListener('click', function () {
+    if (!AI.ready()) return;
+    ask('帮我估这一单的报价：给区间 + 依据 + 不确定项。数字我自己填。');
+  });
+
+  scopeBtn.addEventListener('click', function () {
+    if (!AI.ready()) return;
+    setBusy(true);
+    AI.makeScope(st.messages, ctx).then(function (r) {
+      setBusy(false);
+      if (!r || !r.en) { renderMsg('ai', '（没生成出来，再试一次）'); return; }
+      outEn.value = r.en;
+      outZh.textContent = '中文对照：' + (r.zh || '（无）');
+      out.setAttribute('data-open', '1');
+      body.scrollTop = body.scrollHeight;
+    }).catch(function (e) {
+      setBusy(false);
+      renderMsg('ai', '出错了：' + (e && e.message ? e.message : e));
+    });
+  });
+
+  fillBtn.addEventListener('click', function () {
+    var t = document.querySelector('[role="dialog"] .proposalContainer .scope textarea');
+    if (!t) { outZh.textContent = '找不到「范围」输入框，可能界面变了'; return; }
+    setNativeValue(t, outEn.value || '');
+    t.focus();
+    fillBtn.textContent = '已填入 ✓';
+    setTimeout(function () { fillBtn.textContent = '填入范围'; }, 1800);
+  });
+
+  document.body.appendChild(mask);
+  ta.focus();
+}
+
+/* 在「提案」标题旁挂「讨论这单」入口 */
+function maybeInjectProposeButton() {
+  if (!enabled) return;
+  var dlg = document.querySelector('[role="dialog"]');
+  if (!dlg) return;
+  if (dlg.querySelector('.vgenzh-propose-btn')) return;
+  var hdrs = dlg.querySelectorAll('.inputGroupHeader .inputGroupTitle');
+  for (var i = 0; i < hdrs.length; i++) {
+    if ((hdrs[i].textContent || '').trim() !== '提案') continue;
+    var btn = el('button', 'vgenzh-propose-btn', '💬 讨论这单');
+    btn.type = 'button';
+    btn.setAttribute('data-vgenzh-skip', '1');
+    btn.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openDiscussDialog();
+    });
+    hdrs[i].parentElement.appendChild(btn);
+    return;
+  }
+}
+
 /* --------------------------------------------------------- 在线词库 */
 
 /*
@@ -5166,6 +5473,44 @@ var AI = {
       if (!en || !/[A-Za-z]/.test(en)) return null;
       if (/[\u3400-\u9FFF]/.test(en)) return null;    /* 还带中文 = 没译完 */
       return en;
+    });
+  },
+
+  /**
+   * 讨论（多轮）。history = [{role:'user'|'assistant', content}]。
+   * context 是接稿弹窗里的全部可见文字，作为 system 的第二段。
+   */
+  discuss: function (history, context) {
+    var msgs = [{
+      role: 'system',
+      content: AI_DISCUSS_PROMPT + '\n\n【这一单的全部资料】\n' + (context || '（没读到弹窗资料）')
+    }];
+    var h = (history || []).slice(-16);
+    for (var i = 0; i < h.length; i++) msgs.push({ role: h[i].role, content: h[i].content });
+    if (msgs.length === 1) msgs.push({ role: 'user', content: '先帮我看看这单有什么要注意的。' });
+    return this.request(msgs).then(function (out) {
+      var t = String(out || '').trim();
+      return t || null;
+    });
+  },
+
+  /** 生成「范围」字段的英文 + 中文对照。返回 Promise<{en,zh}|null> */
+  makeScope: function (history, context) {
+    var msgs = [{
+      role: 'system',
+      content: AI_SCOPE_PROMPT + '\n\n【这一单的全部资料】\n' + (context || '（没读到弹窗资料）')
+    }];
+    var h = (history || []).slice(-16);
+    for (var i = 0; i < h.length; i++) msgs.push({ role: h[i].role, content: h[i].content });
+    msgs.push({ role: 'user', content: '现在按上面谈定的内容，生成「范围」字段的英文和中文对照。只返回 JSON。' });
+    return this.request(msgs).then(function (raw) {
+      var s = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+      var a = s.indexOf('{'), b = s.lastIndexOf('}');
+      if (a < 0 || b < a) return null;
+      var o;
+      try { o = JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
+      if (!o || typeof o.en !== 'string' || !o.en.trim()) return null;
+      return { en: o.en.trim(), zh: typeof o.zh === 'string' ? o.zh.trim() : '' };
     });
   },
 

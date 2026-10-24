@@ -87,8 +87,16 @@ const html = `<!DOCTYPE html>
 
     var CHAT_MARK = '【需要翻译的条目】';
     var ZH2EN_MARK = '【我要说的话（中文）】';
+    var sys = (body.messages[0] && body.messages[0].content) || '';
 
-    if (userMsg.indexOf(CHAT_MARK) >= 0) {
+    if (userMsg.indexOf('生成「范围」字段的英文和中文对照') >= 0) {
+      reply = JSON.stringify({
+        en: 'Thanks for the request! Confirmed scope: 6 separate icons, outfits may be simplified.',
+        zh: '感谢委托！已确认范围：6 个单独图标，服装可简化。'
+      });
+    } else if (sys.indexOf('中介的助手') >= 0) {
+      reply = '模拟讨论回复：客户说 5 个但列了 6 个，建议先确认。';
+    } else if (userMsg.indexOf(CHAT_MARK) >= 0) {
       /* 聊天批量：标记后面跟一个 [{id,text}] 数组 -> {id:"模拟中文"} */
       var arr = [];
       try { arr = JSON.parse(userMsg.slice(userMsg.indexOf(CHAT_MARK) + CHAT_MARK.length).trim()); }
@@ -215,6 +223,20 @@ ${engine}
       <pre class="detailsText">5 Separate icons of the references above. Feel free to simplify the outfits if you need to. Agnes Tachyon: Smug, playful Gold Ship Summer: kinda crazy, draw her with a smile.</pre>
     </div>
   </div>
+  <div class="inputGroup">
+    <div class="inputGroupHeader"><h4 class="inputGroupTitle">提案</h4></div>
+    <div class="proposalContainer">
+      <div class="inputSection">
+        <h4 class="groupSubHeader">范围</h4>
+        <div class="InputField__Container-vg__sc-x scope">
+          <label class="formLabel"><div class="inputContainer">
+            <textarea class="formField" placeholder="确认将要完成的内容" rows="9"></textarea>
+          </div></label>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="inputGroupHeader"><span>COMM#NBOI5DUCLRKS</span></div>
 </div>
 <!-- 真代码块：必须有 <code>，引擎要跳过它 -->
 <pre id="real-code"><code>const status = "Draft";</code></pre>
@@ -558,6 +580,50 @@ ${engine}
             return new Promise(function (res2) { setTimeout(res2, 200); }).then(function () {
               out.push('英文原样放行=' +
                 (ta.value === 'Sounds good, thanks for checking in!' ? '✅' : '❌ ' + JSON.stringify(ta.value)));
+              return null;
+            });
+          });
+        }).then(function () {
+          /* 讨论窗口：按钮 -> 打开 -> 发送 -> 生成范围 -> 填入 */
+          var pbtn = document.querySelector('#fake-modal .vgenzh-propose-btn');
+          out.push('讨论按钮已挂=' + (pbtn ? '✅' : '❌'));
+          if (!pbtn) return null;
+          pbtn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          var dlg = document.querySelector('.vgenzh-dlg');
+          out.push('讨论窗口已开=' + (dlg ? '✅' : '❌'));
+          if (!dlg) return null;
+          out.push('窗口显示委托编号=' +
+            ((dlg.textContent || '').indexOf('COMM#NBOI5DUCLRKS') >= 0 ? '✅' : '❌'));
+
+          var dta = dlg.querySelector('.vgenzh-dlg-ftb textarea');
+          dta.value = '这单怎么报价';
+          var sendB = dlg.querySelectorAll('.vgenzh-dlg-row button')[0];
+          sendB.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+          return new Promise(function (res3) { setTimeout(res3, 400); }).then(function () {
+            var msgs = dlg.querySelectorAll('.vgenzh-dlg-msg');
+            out.push('讨论有来有回=' + (msgs.length >= 3 ? '✅ ' + msgs.length + ' 条' : '❌ ' + msgs.length + ' 条'));
+            out.push('AI回复已显示=' +
+              ((dlg.textContent || '').indexOf('模拟讨论回复') >= 0 ? '✅' : '❌'));
+
+            /* 生成范围文本 */
+            var btns = dlg.querySelectorAll('.vgenzh-dlg-row button');
+            var scopeB = btns[1];
+            scopeB.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            return new Promise(function (res4) { setTimeout(res4, 400); }).then(function () {
+              var outBox = dlg.querySelector('.vgenzh-dlg-out');
+              var outTa = outBox ? outBox.querySelector('textarea') : null;
+              out.push('范围文本已生成=' +
+                (outBox && outBox.getAttribute('data-open') === '1' && outTa && /Thanks for the request/.test(outTa.value) ? '✅' : '❌'));
+              out.push('中文对照已显示=' +
+                (outBox && /已确认范围/.test(outBox.textContent) ? '✅' : '❌'));
+
+              /* 填入范围 */
+              var fillB = outBox ? outBox.querySelectorAll('.vgenzh-dlg-row button')[0] : null;
+              if (fillB) fillB.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              var scopeTa = document.querySelector('#fake-modal .proposalContainer .scope textarea');
+              out.push('已填入范围输入框=' +
+                (scopeTa && /Thanks for the request/.test(scopeTa.value) ? '✅' : '❌ ' + JSON.stringify(scopeTa && scopeTa.value.slice(0, 30))));
               return null;
             });
           });
