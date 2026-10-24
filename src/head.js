@@ -4,9 +4,9 @@
 // @name:en      VGen Chinese
 // @namespace    https://github.com/takeez/vgen-chinese
 // @version      __VERSION__
-// @description  把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
-// @description:zh-CN 把 vgen.co（画师委托平台）的界面汉化成简体中文。约 2300 条词条整条精确匹配，不误伤用户自己写的画师名与服务标题；不需要 AI，可选接 API 辅助翻译。
-// @description:en Translate the vgen.co interface into Simplified Chinese. ~2300 exact-match terms, no AI required.
+// @description  把 vgen.co（画师委托平台）汉化成简体中文。约 2400 条词条整条精确匹配，不误伤用户自己写的内容；不需要 AI 就能完整使用。可选接 API：一键翻客户需求、聊天自动翻、中文输入自动转英文、提案讨论与报价参考。
+// @description:zh-CN 把 vgen.co（画师委托平台）汉化成简体中文。约 2400 条词条整条精确匹配，不误伤用户自己写的内容；不需要 AI 就能完整使用。可选接 API：一键翻客户需求、聊天自动翻、中文输入自动转英文、提案讨论与报价参考。
+// @description:en Translate vgen.co into Simplified Chinese with an exact-match term dictionary (no AI needed), plus optional AI help: one-click request translation, auto-translated chat, Chinese-to-English send, and proposal drafting.
 // @author       takeez
 // @license      MIT
 // @homepageURL  https://github.com/takeez/vgen-chinese

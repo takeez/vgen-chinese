@@ -1007,6 +1007,59 @@ function exportUserTerms() {
 }
 
 /*
+ * 导入自订词条（从剪贴板读导出过的那份 JSON）。
+ *
+ * 主要用于**换名字/重装之后把词条搬回来** —— 篡改猴的 GM 存储是按脚本身份
+ * 分桶的，改了 @name 就相当于换了身份，存储是空的，只能靠导出再导入。
+ * 格式兼容：{terms:{...}} 或直接的 {...} 都行。
+ */
+function importUserTerms() {
+  if (!navigator.clipboard || !navigator.clipboard.readText) {
+    alert('这个浏览器不支持读取剪贴板，请手动操作。');
+    return;
+  }
+  navigator.clipboard.readText().then(function (txt) {
+    var obj;
+    try { obj = JSON.parse(txt); } catch (e) {
+      alert('剪贴板内容不是合法 JSON。\n请先用旧版「导出我的自订词条」复制一份。');
+      return;
+    }
+    var src = (obj && obj.terms && typeof obj.terms === 'object') ? obj.terms : obj;
+    if (!src || typeof src !== 'object') { alert('格式不对：没找到 terms。'); return; }
+
+    var added = 0, skipped = 0;
+    var next = {};
+    for (var k in USER_TERMS) if (Object.prototype.hasOwnProperty.call(USER_TERMS, k)) next[k] = USER_TERMS[k];
+    for (var key in src) {
+      if (!Object.prototype.hasOwnProperty.call(src, key)) continue;
+      var v = src[key];
+      if (typeof k !== 'string') continue;
+      if (typeof v !== 'string' || !v.trim()) { skipped++; continue; }
+      if (!String(key).trim()) { skipped++; continue; }
+      if (next[key] === v) { skipped++; continue; }
+      next[key] = v;
+      added++;
+    }
+    if (!added) { alert('没有新增（已存在的都跳过了）。'); return; }
+
+    var n = 0;
+    for (var kk in next) { if (Object.prototype.hasOwnProperty.call(next, kk)) n++; }
+    if (n > 5000) { alert('词条太多（' + n + ' 条），已拒绝，怕把存储写坏。'); return; }
+
+    GM_setValue(CONFIG.KEY.userTerms, next);
+    USER_TERMS = next;
+    rebuildTerms();
+    pending.clear();
+    translate(document.body);
+    translateTitle();
+    alert('已导入 ' + added + ' 条自订词条（跳过 ' + skipped + '），' +
+      '现在一共 ' + Object.keys(USER_TERMS).length + ' 条。\n页面已就地重翻。');
+  }).catch(function (e) {
+    alert('读剪贴板被拒绝（' + (e && e.name ? e.name : e) + '）。\n可以手动：把导出的 JSON 发给别人，或粘贴到面板文本框里用「更新词库」。');
+  });
+}
+
+/*
  * 从剪贴板导入忽略名单。既接受裸的原文列表，也接受**直接粘导出清单**——
  * 每行取第一个 TAB 之前的部分，所以 `Storefront<TAB>NAV.navItem` 也能吃。
  */
@@ -2046,8 +2099,10 @@ function openDictPanel() {
 
   var row2 = el('div', 'row');
   var expUserBtn = el('button', 'act sec', '✏️ 导出我的自订词条（' + Object.keys(USER_TERMS).length + '）');
+  var impUserBtn = el('button', 'act sec', '📋 从剪贴板导入自订词条');
   var impIgnoreBtn = el('button', 'act sec', '🚫 从剪贴板导入忽略名单');
   row2.appendChild(expUserBtn);
+  row2.appendChild(impUserBtn);
   row2.appendChild(impIgnoreBtn);
   bd.appendChild(row2);
 
@@ -2207,6 +2262,7 @@ function openDictPanel() {
   });
 
   expUserBtn.addEventListener('click', exportUserTerms);
+  impUserBtn.addEventListener('click', importUserTerms);
 
   impIgnoreBtn.addEventListener('click', function () {
     if (!navigator.clipboard || !navigator.clipboard.readText) {
