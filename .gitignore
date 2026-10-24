@@ -31,3 +31,6 @@ dist/.build-stamp.json
 tools/
 test/font-coverage.html
 test/font-coverage.png
+
+# 本地业务资料（橱窗/条款/价目），不入库
+data/
